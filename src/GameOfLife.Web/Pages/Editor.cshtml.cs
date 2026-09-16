@@ -1,0 +1,56 @@
+using GameOfLife.Core;
+using GameOfLife.Core.Rle;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.RazorPages;
+
+namespace GameOfLife.Web.Pages;
+
+public class EditorModel(SimulationLoop loop) : PageModel
+{
+    public const int GridSize = 100;
+    public const int MaxRleLength = 1024 * 1024;
+
+    [BindProperty] public string Rle { get; set; } = string.Empty;
+    [BindProperty] public string? Name { get; set; }
+
+    public string? Error { get; private set; }
+
+    public void OnGet()
+    {
+    }
+
+    public async Task<IActionResult> OnPostAsync()
+    {
+        if (string.IsNullOrWhiteSpace(Rle))
+        {
+            Error = "Draw at least one cell or paste an RLE pattern.";
+            return Page();
+        }
+        if (Rle.Length > MaxRleLength)
+        {
+            Error = "The pattern text is too long.";
+            return Page();
+        }
+
+        try
+        {
+            var pattern = RleParser.Parse(Rle);
+            if (pattern.Width > GridSize || pattern.Height > GridSize)
+            {
+                Error = $"The seed must fit in {GridSize} x {GridSize} cells; this one is {pattern.Width} x {pattern.Height}.";
+                return Page();
+            }
+            if (!string.IsNullOrWhiteSpace(Name))
+                pattern = pattern with { Name = Name.Trim() };
+
+            await loop.LoadAsync(pattern);
+            TempData["Message"] = $"Seeded the universe with {pattern.Cells.Count} cells. Press Start to run it.";
+            return RedirectToPage("/Index");
+        }
+        catch (FormatException ex)
+        {
+            Error = $"Could not read the pattern: {ex.Message}";
+            return Page();
+        }
+    }
+}

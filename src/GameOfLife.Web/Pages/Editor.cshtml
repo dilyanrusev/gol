@@ -1,0 +1,57 @@
+@page
+@model EditorModel
+@{
+    ViewData["Title"] = "Seed editor";
+}
+
+<h1 class="h3">Draw the initial state</h1>
+<p class="text-body-secondary">
+    Click a cell to toggle it. Use the arrow keys to move, Space or Enter to toggle, and drag to paint.
+    The @EditorModel.GridSize × @EditorModel.GridSize grid is placed at the centre of the universe when you seed it.
+</p>
+
+@if (Model.Error is not null)
+{
+    <div class="alert alert-danger" role="alert">@Model.Error</div>
+}
+
+<div class="row g-3">
+    <div class="col-lg-8">
+        <div class="d-flex flex-wrap gap-2 mb-2">
+            <button type="button" class="btn btn-outline-danger btn-sm" id="btn-clear">Clear</button>
+            <div class="btn-group btn-group-sm" role="group" aria-label="Presets">
+                <button type="button" class="btn btn-outline-secondary" data-preset="glider">Glider</button>
+                <button type="button" class="btn btn-outline-secondary" data-preset="gun">Glider gun</button>
+                <button type="button" class="btn btn-outline-secondary" data-preset="pulsar">Pulsar</button>
+                <button type="button" class="btn btn-outline-secondary" data-preset="rpentomino">R-pentomino</button>
+                <button type="button" class="btn btn-outline-secondary" data-preset="acorn">Acorn</button>
+            </div>
+            <span class="align-self-center ms-auto">Live cells: <strong id="editor-count">0</strong></span>
+        </div>
+        <div id="editor-grid" class="editor-grid border rounded" role="grid" aria-label="Seed pattern"
+             data-size="@EditorModel.GridSize" data-initial-rle="@Model.Rle"></div>
+    </div>
+
+    <div class="col-lg-4">
+        <form method="post">
+            <div class="mb-3">
+                <label asp-for="Name" class="form-label">Pattern name (optional)</label>
+                <input asp-for="Name" class="form-control" maxlength="100" />
+            </div>
+            <div class="mb-3">
+                <label asp-for="Rle" class="form-label">RLE</label>
+                <textarea asp-for="Rle" class="form-control font-monospace" rows="12" id="editor-rle" spellcheck="false"></textarea>
+                <div class="form-text">Kept in sync with the grid. You can also paste a pattern here and press Apply.</div>
+            </div>
+            <div class="d-grid gap-2">
+                <button type="button" class="btn btn-outline-secondary" id="btn-apply-rle">Apply RLE to grid</button>
+                <button type="submit" class="btn btn-primary">Seed the universe</button>
+                <a class="btn btn-link" asp-page="/Index">Back to the universe</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    <script type="module" src="~/js/editor.js" asp-append-version="true"></script>
+}

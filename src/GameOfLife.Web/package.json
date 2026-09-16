@@ -1,0 +1,16 @@
+{
+  "name": "gameoflife-web-client",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TypeScript client for the Game of Life viewer and seed editor",
+  "scripts": {
+    "copy-libs": "node -e \"const fs=require('fs');fs.mkdirSync('wwwroot/lib/signalr',{recursive:true});for(const f of ['signalr.js','signalr.min.js','signalr.min.js.map'])fs.copyFileSync('node_modules/@microsoft/signalr/dist/browser/'+f,'wwwroot/lib/signalr/'+f)\"",
+    "postinstall": "npm run copy-libs",
+    "build": "tsc",
+    "watch": "tsc --watch --preserveWatchOutput"
+  },
+  "devDependencies": {
+    "@microsoft/signalr": "^9.0.0",
+    "typescript": "^5.6.0"
+  }
+}
