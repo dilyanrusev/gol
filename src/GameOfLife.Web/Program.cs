@@ -31,3 +31,6 @@ app.MapRazorPages();
 app.MapHub<LifeHub>(LifeHub.Path);
 
 app.Run();
+
+/// <summary>Lets the integration tests host the app through <c>WebApplicationFactory</c>.</summary>
+public partial class Program;

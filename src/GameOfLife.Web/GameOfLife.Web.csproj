@@ -11,11 +11,82 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Marker attributes for the TypeScript client generator (TypedSignalR.Client.TypeScript / Tapper). -->
+    <PackageReference Include="Tapper.Attributes" Version="1.14.0" />
+    <PackageReference Include="TypedSignalR.Client.TypeScript.Attributes" Version="1.17.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- The TypeScript sources and node_modules are not part of the published app; wwwroot/js is. -->
     <Content Remove="Scripts\**" />
     <Content Remove="node_modules\**" />
     <None Include="Scripts\**" />
+    <!-- Written by the build itself; watching them would make dotnet watch rebuild in a loop. -->
+    <None Update="Scripts\generated\**" Watch="false" />
     <Content Include="..\..\patterns\*.rle" Link="patterns\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <!--
+    Client build, chained after Build:
+      1. RestoreDotnetTools    - dotnet tool restore from the repo's .config/dotnet-tools.json (pins the generator version).
+      2. GenerateSignalRClient - emits Scripts/generated/*.ts from [Hub] ILifeHub, [Receiver] ILifeClient and
+                                 [TranspilationSource] types. The output is committed; review it like any other diff.
+      3. NpmInstall            - npm ci when package-lock.json changed.
+      4. CompileTypeScript     - npm run build (tsc) into wwwroot/js.
+    Every step is incremental, skipped for IDE design-time builds, and can be turned off with
+    dotnet build -p:SkipClientBuild=true (e.g. in a container without Node).
+  -->
+  <PropertyGroup>
+    <RepoRoot>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '..', '..'))</RepoRoot>
+    <SignalRClientOutputDir>$(MSBuildProjectDirectory)\Scripts\generated</SignalRClientOutputDir>
+    <ClientBuildEnabled>false</ClientBuildEnabled>
+    <ClientBuildEnabled Condition="'$(SkipClientBuild)' != 'true' and '$(DesignTimeBuild)' != 'true'">true</ClientBuildEnabled>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Everything the generator reads. Keep hub interfaces and wire DTOs in these folders. -->
+    <SignalRClientSource Include="Hubs\**\*.cs;Simulation\**\*.cs" />
+    <SignalRClientOutput Include="$(SignalRClientOutputDir)\GameOfLife.Web.Simulation.ts" />
+    <SignalRClientOutput Include="$(SignalRClientOutputDir)\TypedSignalR.Client\GameOfLife.Web.Hubs.ts" />
+    <SignalRClientOutput Include="$(SignalRClientOutputDir)\TypedSignalR.Client\index.ts" />
+    <TypeScriptSource Include="Scripts\**\*.ts;tsconfig.json" />
+  </ItemGroup>
+
+  <Target Name="RestoreDotnetTools"
+          Condition="'$(ClientBuildEnabled)' == 'true'"
+          Inputs="$(RepoRoot).config\dotnet-tools.json"
+          Outputs="$(IntermediateOutputPath)dotnet-tools.restored">
+    <Exec Command="dotnet tool restore" WorkingDirectory="$(RepoRoot)" />
+    <Touch Files="$(IntermediateOutputPath)dotnet-tools.restored" AlwaysCreate="true" />
+  </Target>
+
+  <Target Name="GenerateSignalRClient"
+          AfterTargets="Build"
+          DependsOnTargets="RestoreDotnetTools"
+          Condition="'$(ClientBuildEnabled)' == 'true'"
+          Inputs="@(SignalRClientSource);$(MSBuildProjectFullPath)"
+          Outputs="@(SignalRClientOutput)">
+    <Message Importance="high" Text="Generating the TypeScript SignalR client into $(SignalRClientOutputDir)" />
+    <Exec Command="dotnet dotnet-tsrts --project &quot;$(MSBuildProjectFullPath)&quot; --output &quot;$(SignalRClientOutputDir)&quot;"
+          WorkingDirectory="$(RepoRoot)" />
+  </Target>
+
+  <Target Name="NpmInstall"
+          Condition="'$(ClientBuildEnabled)' == 'true'"
+          Inputs="package.json;package-lock.json"
+          Outputs="node_modules\.package-lock.json">
+    <Exec Command="npm ci" />
+  </Target>
+
+  <Target Name="CompileTypeScript"
+          AfterTargets="GenerateSignalRClient"
+          DependsOnTargets="NpmInstall;GenerateSignalRClient"
+          Condition="'$(ClientBuildEnabled)' == 'true'"
+          Inputs="@(TypeScriptSource)"
+          Outputs="$(IntermediateOutputPath)tsc.stamp">
+    <Message Importance="high" Text="Compiling TypeScript into wwwroot/js" />
+    <Exec Command="npm run build" />
+    <Touch Files="$(IntermediateOutputPath)tsc.stamp" AlwaysCreate="true" />
+  </Target>
 
 </Project>

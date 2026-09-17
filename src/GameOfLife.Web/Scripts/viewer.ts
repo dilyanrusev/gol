@@ -1,16 +1,7 @@
 import { attachGestures } from "./gestures.js";
-
-/** Mirrors GameOfLife.Web.Simulation.Frame (camelCased by SignalR's JSON protocol). */
-interface Frame {
-  generation: number;
-  population: number;
-  running: boolean;
-  generationsPerSecond: number;
-  width: number;
-  height: number;
-  /** Packed row-major indices (y * width + x) of live cells inside the viewport. */
-  cells: number[];
-}
+// Generated from the server's ILifeHub / ILifeClient / Frame by the build (see GameOfLife.Web.csproj).
+import { getHubProxyFactory, getReceiverRegister } from "./generated/TypedSignalR.Client/index.js";
+import type { Frame } from "./generated/GameOfLife.Web.Simulation.js";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = $<HTMLCanvasElement>("universe");
@@ -105,6 +96,7 @@ const connection = new signalR.HubConnectionBuilder()
   .withUrl("/hubs/life")
   .withAutomaticReconnect()
   .build();
+const hub = getHubProxyFactory("ILifeHub").createHubProxy(connection);
 
 const setStatus = (text: string, cls: string) => {
   const el = $("status-connection");
@@ -120,25 +112,25 @@ const setStatus = (text: string, cls: string) => {
 async function initialiseFromHub(): Promise<void> {
   setStatus("connected", "text-bg-success");
   try {
-    applyFrame(await connection.invoke<Frame>("Refresh"));
+    applyFrame(await hub.refresh());
   } catch (err) {
-    console.error("Refresh", err);
+    console.error("refresh", err);
     setStatus("no state from server", "text-bg-danger");
   }
 }
 
-// Name matches ILifeClient.ReceiveFrame on the server.
-connection.on("ReceiveFrame", applyFrame);
+getReceiverRegister("ILifeClient").register(connection, { receiveFrame: async (f) => applyFrame(f) });
 connection.onreconnecting(() => { setStatus("reconnecting…", "text-bg-warning"); disableSimulationControls(); });
 connection.onreconnected(initialiseFromHub);
 connection.onclose(() => { setStatus("disconnected", "text-bg-danger"); disableSimulationControls(); });
 
-async function invoke(method: string, ...args: unknown[]): Promise<void> {
+/** Awaits a hub call, applies the frame it returns (if any) and surfaces hub errors in the status badge. */
+async function call(name: string, request: Promise<Frame | void>): Promise<void> {
   try {
-    const result = await connection.invoke<Frame | void>(method, ...args);
+    const result = await request;
     if (result) applyFrame(result);
   } catch (err) {
-    console.error(method, err);
+    console.error(name, err);
     setStatus((err as Error).message.replace(/^.*HubException: /, ""), "text-bg-danger");
   }
 }
@@ -157,25 +149,25 @@ function pan(dx: number, dy: number): void {
       const [x, y] = [pendingDx, pendingDy];
       pendingDx = pendingDy = 0;
       if (!Number.isSafeInteger(x) || !Number.isSafeInteger(y)) { setStatus("pan too large", "text-bg-danger"); break; }
-      await invoke("Pan", x, y);
+      await call("pan", hub.pan(x, y));
     }
     inFlight = null;
   })();
 }
 
-const resize = (w: number, h: number) => invoke("Resize", Math.round(w), Math.round(h));
+const resize = (w: number, h: number) => call("resize", hub.resize(Math.round(w), Math.round(h)));
 const zoom = (factor: number) => resize(frame.width * factor, frame.height * factor);
-const recentre = () => invoke("Recentre");
+const recentre = () => call("recentre", hub.recentre());
 
 attachGestures(canvas, { pan, zoom, recentre, cellSize: () => cellPx });
 
 // ---------- buttons ----------
-$("btn-start").addEventListener("click", () => invoke("Start"));
-$("btn-pause").addEventListener("click", () => invoke("Pause"));
-$("btn-step").addEventListener("click", () => invoke("Step"));
-$("btn-reset").addEventListener("click", () => invoke("Reset"));
+$("btn-start").addEventListener("click", () => call("start", hub.start()));
+$("btn-pause").addEventListener("click", () => call("pause", hub.pause()));
+$("btn-step").addEventListener("click", () => call("step", hub.step()));
+$("btn-reset").addEventListener("click", () => call("reset", hub.reset()));
 speed.addEventListener("input", () => { $("speed-value").textContent = speed.value; });
-speed.addEventListener("change", () => invoke("SetSpeed", Number(speed.value)));
+speed.addEventListener("change", () => call("setSpeed", hub.setSpeed(Number(speed.value))));
 
 $("btn-recentre").addEventListener("click", recentre);
 $("btn-zoom-in").addEventListener("click", () => zoom(0.8));

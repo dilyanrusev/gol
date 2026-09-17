@@ -100,3 +100,44 @@ Result: new `Hubs/ILifeClient.cs` declares `ReceiveFrame(Frame, CancellationToke
 derives from `Hub<ILifeClient>` and `ClientViewports` takes `IHubContext<LifeHub, ILifeClient>`,
 so every push is a compiled method call and the `FrameMethod` string constant is gone. The browser
 subscribes to `ReceiveFrame` (the interface method name) in `viewer.ts`.
+
+### 7. Generated TypeScript client
+
+> Is it possible to use something like OpenAPI to automate the sync for Frame and the hub methods
+> between .NET and TS?
+
+> From the github page, it seems that this can be easily integrated in the .csproj, as a build step
+> that happens after Build. It could test if the dotnet tool is in path, if not, install it. Another
+> step would depend on the installation step and manually invoke the tool to generate the client
+> proxy. Do you see downsides?
+
+> Can you test if the tool handls .net 10 yourself?
+
+> Integrate it into the .csproj as we discussed
+
+Result: TypedSignalR.Client.TypeScript (pinned in `.config/dotnet-tools.json`) generates
+`Scripts/generated/` from `[Hub] ILifeHub`, `[Receiver] ILifeClient` and `[TranspilationSource]
+Frame`. `GameOfLife.Web.csproj` chains four incremental targets after `Build`: `dotnet tool restore`,
+the generator, `npm ci`, `npm run build`; all skipped for design-time builds and with
+`-p:SkipClientBuild=true`. `LifeHub` implements `ILifeHub` (viewport methods now return
+`Task<Frame>`). `viewer.ts` uses the generated proxy and receiver instead of string method names.
+Verified: full build, incremental rebuild skips all four targets, publish from a tree without
+`wwwroot/js` still ships the JS, scripted client exercises the hub against the built server.
+
+### 8. Integration tests
+
+> What do you recommend for integration tests? Puppeteer or PuppeteerSharp?
+
+> Can playwright be configured to use an already installed chromium instance?
+
+> Ok, for the sake of stable testing, use the embedded chromium that PW ships with
+
+Result: recommended Playwright for .NET over either Puppeteer flavour (stays in xUnit, multiple
+browser contexts for multiplayer scenarios, touch emulation, auto-waiting). New
+`tests/GameOfLife.Web.Tests`: `WebAppFixture` hosts the app with `WebApplicationFactory` in its
+.NET 10 Kestrel mode at a random port and launches Playwright's bundled Chromium (installed by the
+fixture on first run). `HubTests` cover the hub contract with the .NET SignalR client (frame on
+connect, refresh, resize clamping, rejected pan, shared start/pause, per-client viewports).
+`BrowserTests` cover the page: paused/running state on connect, start in one browser seen in
+another, zoom affecting one browser only, controls disabled when the connection fails.
+`Program.cs` gained `public partial class Program` for the factory.

@@ -7,23 +7,31 @@ browsers connect over SignalR and each watches its own viewport.
 
 ```
 cd src/GameOfLife.Web
-npm install          # also copies the SignalR browser bundle into wwwroot/lib/signalr
-npm run build        # or: npm run watch  (rebuilds TypeScript on change)
 dotnet run           # http://localhost:5077
 ```
+
+Node.js must be on the `PATH`. `dotnet build` (and therefore `run`, `watch`, `publish`) also
+builds the client: it restores the TypeScript client generator from `.config/dotnet-tools.json`,
+regenerates `Scripts/generated/` from the hub interfaces, runs `npm ci` when the lock file changed,
+and compiles the TypeScript into `wwwroot/js`. Each step is incremental. While editing only
+TypeScript, `npm run watch` is still the fastest loop. Pass `-p:SkipClientBuild=true` to build
+the server alone (for example in a container without Node).
 
 The server seeds itself with `patterns/gosper_glider_gun.rle` (configurable through
 `GameOfLife:SeedFile`). Press **Start** in the browser to run it.
 
-Tests: `dotnet test`
+Tests: `dotnet test`. The Web tests start the real server on Kestrel at a random port and drive it
+with the .NET SignalR client and with Playwright. They use the Chromium build bundled with the
+Playwright package, which the test fixture downloads on first run (about 150 MB, cached per user).
 
 ## Layout
 
 | Path | What |
 | --- | --- |
 | `src/GameOfLife.Core` | Engine (`Universe`), RLE parser/writer, `Viewport`, `SimulationLoop`. No ASP.NET dependency. |
-| `src/GameOfLife.Web` | Razor Pages UI, SignalR hub, hosted service, TypeScript client in `Scripts/`. |
+| `src/GameOfLife.Web` | Razor Pages UI, SignalR hub, hosted service, TypeScript client in `Scripts/` (`Scripts/generated/` is produced by the build from `ILifeHub`, `ILifeClient` and `Frame`; commit it, never edit it). |
 | `tests/GameOfLife.Core.Tests` | xUnit: RLE round trips, engine vs. known patterns, viewport seam handling, loop commands. |
+| `tests/GameOfLife.Web.Tests` | xUnit integration tests: hub contract over the .NET SignalR client; page behaviour in headless Chromium via Playwright (initial state on connect, controls shared across browsers, viewports per browser). |
 | `patterns/` | Example `.rle` files (Gosper glider gun). |
 
 ## Design
