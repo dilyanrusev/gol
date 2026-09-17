@@ -196,3 +196,27 @@ explain (Bootstrap re-creates a shown tooltip on every content change, which fli
 frames a second while running, and can leave a hidden element behind on a quick re-hover). Tests
 updated and added at all three levels; Done now runs a generation immediately, which the tests
 account for by checking the adopted seed rather than the transient population.
+
+### 12. React and esbuild
+
+> It seems the ts code is too complicated for pure DOM manipulations. It should be ported to React,
+> and now is the time to start using esbuild. This will remove the need to copy the SignalR to
+> wwwroot manually. What information do you need to do this?
+
+> I agree with your defaults, do it
+
+Decisions: both pages ported; Razor stays the shell (layout, alerts, constants and anti-forgery
+token via data attributes, form handlers); react-bootstrap for behaviour with Bootstrap itself
+moved from the vendored copy to npm and bundled by esbuild; the build type-checks with `tsc` then
+bundles with esbuild (minified for Release); Playwright stays the only client test layer with all
+element ids preserved.
+
+Result: `Scripts/viewer` (`useLifeHub` hook over the generated proxy, `Viewer`, `UniverseCanvas`,
+`EditBanner`, `StatusBar`, `SimulationCard` with a react-bootstrap tooltip, `ViewportCard`,
+`SeedCard`), `Scripts/editor` (`Editor` with memoised rows, painting, roving tabindex, inline RLE
+errors instead of alert()), `Scripts/site` (Bootstrap CSS/JS + site styles), `build.mjs`, new
+`tsconfig.json`, `package.json` without the copy-libs step, csproj `BuildClient` target, layout and
+pages reduced to mount elements. `wwwroot/lib` and `wwwroot/css` are gone; `wwwroot/dist` is
+ignored. All existing tests pass unchanged except the upload test, which now reads the anti-forgery
+token from the mount element. Three new Playwright tests cover the seed editor (presets, clicks,
+keyboard, RLE round trip, inline errors, seeding the universe through the Razor handler).

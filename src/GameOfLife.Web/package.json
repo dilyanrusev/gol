@@ -1,16 +1,27 @@
 {
   "name": "gameoflife-web-client",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "TypeScript client for the Game of Life viewer and seed editor",
+  "type": "module",
+  "description": "React client for the Game of Life viewer and seed editor, bundled with esbuild",
   "scripts": {
-    "copy-libs": "node -e \"const fs=require('fs');fs.mkdirSync('wwwroot/lib/signalr',{recursive:true});for(const f of ['signalr.js','signalr.min.js','signalr.min.js.map'])fs.copyFileSync('node_modules/@microsoft/signalr/dist/browser/'+f,'wwwroot/lib/signalr/'+f)\"",
-    "postinstall": "npm run copy-libs",
-    "build": "tsc",
-    "watch": "tsc --watch --preserveWatchOutput"
+    "typecheck": "tsc --noEmit",
+    "bundle": "node build.mjs",
+    "build": "npm run typecheck && node build.mjs",
+    "build:release": "npm run typecheck && node build.mjs --minify",
+    "watch": "node build.mjs --watch"
+  },
+  "dependencies": {
+    "@microsoft/signalr": "^9.0.0",
+    "bootstrap": "^5.3.0",
+    "react": "^19.0.0",
+    "react-bootstrap": "^2.10.0",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@microsoft/signalr": "^9.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "esbuild": "^0.25.0",
     "typescript": "^5.6.0"
   }
 }

@@ -17,9 +17,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- The TypeScript sources and node_modules are not part of the published app; wwwroot/js is. -->
+    <!-- The client sources, node_modules and build script are not part of the published app; wwwroot/dist is. -->
     <Content Remove="Scripts\**" />
     <Content Remove="node_modules\**" />
+    <Content Remove="build.mjs" />
     <None Include="Scripts\**" />
     <!-- Written by the build itself; watching them would make dotnet watch rebuild in a loop. -->
     <None Update="Scripts\generated\**" Watch="false" />
@@ -32,7 +33,7 @@
       2. GenerateSignalRClient - emits Scripts/generated/*.ts from [Hub] ILifeHub, [Receiver] ILifeClient and
                                  [TranspilationSource] types. The output is committed; review it like any other diff.
       3. NpmInstall            - npm ci when package-lock.json changed.
-      4. CompileTypeScript     - npm run build (tsc) into wwwroot/js.
+      4. BuildClient           - tsc (type check only) then esbuild into wwwroot/dist; minified for Release.
     Every step is incremental, skipped for IDE design-time builds, and can be turned off with
     dotnet build -p:SkipClientBuild=true (e.g. in a container without Node).
   -->
@@ -41,6 +42,8 @@
     <SignalRClientOutputDir>$(MSBuildProjectDirectory)\Scripts\generated</SignalRClientOutputDir>
     <ClientBuildEnabled>false</ClientBuildEnabled>
     <ClientBuildEnabled Condition="'$(SkipClientBuild)' != 'true' and '$(DesignTimeBuild)' != 'true'">true</ClientBuildEnabled>
+    <ClientBuildScript>build</ClientBuildScript>
+    <ClientBuildScript Condition="'$(Configuration)' == 'Release'">build:release</ClientBuildScript>
   </PropertyGroup>
 
   <ItemGroup>
@@ -49,7 +52,7 @@
     <SignalRClientOutput Include="$(SignalRClientOutputDir)\GameOfLife.Web.Simulation.ts" />
     <SignalRClientOutput Include="$(SignalRClientOutputDir)\TypedSignalR.Client\GameOfLife.Web.Hubs.ts" />
     <SignalRClientOutput Include="$(SignalRClientOutputDir)\TypedSignalR.Client\index.ts" />
-    <TypeScriptSource Include="Scripts\**\*.ts;tsconfig.json" />
+    <ClientSource Include="Scripts\**\*.ts;Scripts\**\*.tsx;Scripts\**\*.css;tsconfig.json;build.mjs;package.json" />
   </ItemGroup>
 
   <Target Name="RestoreDotnetTools"
@@ -78,15 +81,15 @@
     <Exec Command="npm ci" />
   </Target>
 
-  <Target Name="CompileTypeScript"
+  <Target Name="BuildClient"
           AfterTargets="GenerateSignalRClient"
           DependsOnTargets="NpmInstall;GenerateSignalRClient"
           Condition="'$(ClientBuildEnabled)' == 'true'"
-          Inputs="@(TypeScriptSource)"
-          Outputs="$(IntermediateOutputPath)tsc.stamp">
-    <Message Importance="high" Text="Compiling TypeScript into wwwroot/js" />
-    <Exec Command="npm run build" />
-    <Touch Files="$(IntermediateOutputPath)tsc.stamp" AlwaysCreate="true" />
+          Inputs="@(ClientSource)"
+          Outputs="$(IntermediateOutputPath)client-$(Configuration).stamp">
+    <Message Importance="high" Text="Type checking and bundling the client into wwwroot/dist ($(ClientBuildScript))" />
+    <Exec Command="npm run $(ClientBuildScript)" />
+    <Touch Files="$(IntermediateOutputPath)client-$(Configuration).stamp" AlwaysCreate="true" />
   </Target>
 
 </Project>

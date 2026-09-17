@@ -1,5 +1,6 @@
 @page
 @model IndexModel
+@inject Microsoft.AspNetCore.Antiforgery.IAntiforgery Antiforgery
 @{
     ViewData["Title"] = "Universe";
 }
@@ -19,118 +20,24 @@
     </div>
 }
 
-@* Shown while any client holds the edit session. Sticky so the countdown stays in view while panning. *@
-<div id="edit-banner" class="alert alert-success sticky-top shadow mb-3" role="status" aria-live="polite" hidden>
-    <div class="d-flex flex-wrap align-items-center gap-3">
-        <div class="flex-grow-1">
-            <strong id="edit-banner-title"></strong>
-            <span id="edit-banner-text"></span>
-        </div>
-        <div class="text-nowrap">Unlocks in <strong id="edit-countdown" class="font-monospace">–:––</strong></div>
-        <div class="btn-group" id="edit-banner-actions" role="group" aria-label="Finish editing" hidden>
-            <button type="button" class="btn btn-primary" id="btn-edit-done" disabled>Done</button>
-            <button type="button" class="btn btn-outline-secondary" id="btn-edit-cancel" disabled>Cancel</button>
-        </div>
-    </div>
-    <div class="progress mt-2" id="edit-progress" role="progressbar" aria-label="Time left before editing unlocks"
-         aria-valuemin="0" aria-valuemax="100" aria-valuenow="100">
-        <div class="progress-bar bg-success" id="edit-progress-bar" style="width: 100%"></div>
-    </div>
-</div>
-
-<div class="row g-3">
-    <div class="col-lg-8">
-        <div class="d-flex flex-wrap align-items-center gap-3 mb-2">
-            <span class="badge text-bg-secondary" id="status-connection">connecting…</span>
-            <span class="badge text-bg-secondary" id="status-running" aria-live="polite">–</span>
-            <span>Generation <strong id="status-generation">–</strong></span>
-            <span>Population <strong id="status-population">–</strong></span>
-            <span>Viewport <strong id="status-viewport">–</strong> cells</span>
-        </div>
-        <canvas id="universe" class="universe-canvas w-100 border rounded bg-body-tertiary" tabindex="0"
-                aria-label="Game of Life universe viewport. Drag or use arrow keys to pan, scroll or pinch to zoom."></canvas>
-        <p class="form-text">Drag to pan, scroll or pinch to zoom. Keyboard: arrows pan, + and - zoom, Home recentres.</p>
-        <p class="form-text" id="edit-hint">Click Edit cells, then click cells in the view to flip them.</p>
-    </div>
-
-    <div class="col-lg-4">
-        <div class="card mb-3">
-            <div class="card-header">Simulation <small class="text-body-secondary">(shared by all clients)</small></div>
-            <div class="card-body">
-                <div class="btn-group w-100 mb-3" role="group" aria-label="Simulation controls">
-                    <button type="button" class="btn btn-success" id="btn-start" disabled>Start</button>
-                    <button type="button" class="btn btn-warning" id="btn-pause" disabled>Pause</button>
-                    <button type="button" class="btn btn-outline-primary" id="btn-step" disabled>Step</button>
-                    <button type="button" class="btn btn-outline-danger" id="btn-reset" disabled>Reset</button>
-                </div>
-                @* The wrapper carries the tooltip: a disabled button receives no pointer events. *@
-                <div class="d-grid mb-3" id="btn-edit-wrap" tabindex="0" data-bs-toggle="tooltip" data-bs-placement="bottom"
-                     data-bs-title="Pause the simulation first, then you can edit cells.">
-                    <button type="button" class="btn btn-outline-primary" id="btn-edit" disabled>Edit cells</button>
-                </div>
-                <label for="speed" class="form-label">Speed: <span id="speed-value">@Model.CurrentSpeed</span> generations/s</label>
-                <input type="range" class="form-range" id="speed" min="@Model.MinSpeed" max="@Model.MaxSpeed" value="@Model.CurrentSpeed" disabled />
-            </div>
-        </div>
-
-        <div class="card mb-3">
-            <div class="card-header">Viewport <small class="text-body-secondary">(this client only)</small></div>
-            <div class="card-body">
-                <div class="d-flex justify-content-center mb-3">
-                    <div class="pan-pad" role="group" aria-label="Pan">
-                        <span></span>
-                        <button type="button" class="btn btn-outline-secondary" data-pan="0,-1" aria-label="Pan up">▲</button>
-                        <span></span>
-                        <button type="button" class="btn btn-outline-secondary" data-pan="-1,0" aria-label="Pan left">◀</button>
-                        <button type="button" class="btn btn-outline-secondary" id="btn-recentre" aria-label="Recentre on seed">⌂</button>
-                        <button type="button" class="btn btn-outline-secondary" data-pan="1,0" aria-label="Pan right">▶</button>
-                        <span></span>
-                        <button type="button" class="btn btn-outline-secondary" data-pan="0,1" aria-label="Pan down">▼</button>
-                        <span></span>
-                    </div>
-                </div>
-                <div class="row g-2 align-items-end">
-                    <div class="col-4">
-                        <label for="grid-width" class="form-label">Width</label>
-                        <input type="number" class="form-control" id="grid-width" min="@Model.MinGridSize" max="@Model.MaxGridSize" value="@Model.DefaultGridSize" />
-                    </div>
-                    <div class="col-4">
-                        <label for="grid-height" class="form-label">Height</label>
-                        <input type="number" class="form-control" id="grid-height" min="@Model.MinGridSize" max="@Model.MaxGridSize" value="@Model.DefaultGridSize" />
-                    </div>
-                    <div class="col-4">
-                        <button type="button" class="btn btn-outline-primary w-100" id="btn-resize">Apply</button>
-                    </div>
-                </div>
-                <div class="btn-group w-100 mt-2" role="group" aria-label="Zoom">
-                    <button type="button" class="btn btn-outline-secondary" id="btn-zoom-in">Zoom in</button>
-                    <button type="button" class="btn btn-outline-secondary" id="btn-zoom-out">Zoom out</button>
-                </div>
-                <p class="form-text mb-0">Grid size is limited to @Model.MinGridSize–@Model.MaxGridSize cells per side.</p>
-            </div>
-        </div>
-
-        <div class="card mb-3">
-            <div class="card-header">Seed</div>
-            <div class="card-body">
-                <form method="post" enctype="multipart/form-data" asp-page-handler="Upload" class="mb-3">
-                    <label for="file" class="form-label">Upload an .rle pattern</label>
-                    <div class="input-group">
-                        <input type="file" class="form-control" id="file" name="file" accept=".rle,text/plain" required />
-                        <button type="submit" class="btn btn-primary">Load</button>
-                    </div>
-                    <div class="form-text">Replaces the universe and pauses. Only rule B3/S23 is accepted.</div>
-                </form>
-                <div class="d-grid gap-2">
-                    <a class="btn btn-outline-primary" asp-page="/Editor">Draw a custom seed</a>
-                    <a class="btn btn-outline-secondary" asp-page-handler="Export">Save current state as .rle</a>
-                </div>
-            </div>
-        </div>
-    </div>
+@*
+    The React viewer (Scripts/viewer) mounts here. Razor stays the shell: it supplies the server-side
+    constants, the anti-forgery token for the upload form and the page URLs through data attributes.
+*@
+<div id="viewer-root"
+     data-default-grid-size="@Model.DefaultGridSize"
+     data-min-grid-size="@Model.MinGridSize"
+     data-max-grid-size="@Model.MaxGridSize"
+     data-min-speed="@Model.MinSpeed"
+     data-max-speed="@Model.MaxSpeed"
+     data-current-speed="@Model.CurrentSpeed"
+     data-upload-url="@Url.Page("/Index", "Upload")"
+     data-export-url="@Url.Page("/Index", "Export")"
+     data-editor-url="@Url.Page("/Editor")"
+     data-antiforgery-token="@Antiforgery.GetAndStoreTokens(HttpContext).RequestToken">
+    <noscript><p class="alert alert-warning">The universe viewer needs JavaScript.</p></noscript>
 </div>
 
 @section Scripts {
-    <script src="~/lib/signalr/signalr.min.js"></script>
-    <script type="module" src="~/js/viewer.js" asp-append-version="true"></script>
+    <script type="module" src="~/dist/viewer.js" asp-append-version="true"></script>
 }

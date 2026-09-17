@@ -187,7 +187,9 @@ public sealed class EditingHubTests(WebAppFixture app) : IAsyncLifetime
         using var client = CreateClient();
         var form = new MultipartFormDataContent { { new StringContent("x = 1, y = 1\no!"), "file", "dot.rle" } };
         var page = await client.GetStringAsync("/");
-        var token = System.Text.RegularExpressions.Regex.Match(page, "name=\"__RequestVerificationToken\" type=\"hidden\" value=\"([^\"]+)\"").Groups[1].Value;
+        // The upload form is rendered by React; Razor hands it the token through the mount element.
+        var token = System.Text.RegularExpressions.Regex.Match(page, "data-antiforgery-token=\"([^\"]+)\"").Groups[1].Value;
+        Assert.NotEmpty(token);
         form.Add(new StringContent(token), "__RequestVerificationToken");
 
         var response = await client.PostAsync("/?handler=Upload", form);

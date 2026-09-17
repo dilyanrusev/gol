@@ -13,9 +13,10 @@ dotnet run           # http://localhost:5077
 Node.js must be on the `PATH`. `dotnet build` (and therefore `run`, `watch`, `publish`) also
 builds the client: it restores the TypeScript client generator from `.config/dotnet-tools.json`,
 regenerates `Scripts/generated/` from the hub interfaces, runs `npm ci` when the lock file changed,
-and compiles the TypeScript into `wwwroot/js`. Each step is incremental. While editing only
-TypeScript, `npm run watch` is still the fastest loop. Pass `-p:SkipClientBuild=true` to build
-the server alone (for example in a container without Node).
+type-checks with `tsc` and bundles with esbuild into `wwwroot/dist` (minified for Release). Each
+step is incremental. While editing only the client, `npm run watch` rebuilds the bundles on change
+(without type checking; run `npm run typecheck` or a `dotnet build` for that). Pass
+`-p:SkipClientBuild=true` to build the server alone (for example in a container without Node).
 
 The server seeds itself with `patterns/gosper_glider_gun.rle` (configurable through
 `GameOfLife:SeedFile`). Press **Start** in the browser to run it.
@@ -36,7 +37,7 @@ Playwright package, which the test fixture downloads on first run (about 150 MB,
 | Path | What |
 | --- | --- |
 | `src/GameOfLife.Core` | Engine (`Universe`), RLE parser/writer, `Viewport`, `SimulationLoop`. No ASP.NET dependency. |
-| `src/GameOfLife.Web` | Razor Pages UI, SignalR hub, hosted service, TypeScript client in `Scripts/` (`Scripts/generated/` is produced by the build from `ILifeHub`, `ILifeClient` and `Frame`; commit it, never edit it). |
+| `src/GameOfLife.Web` | Razor Pages shell, SignalR hub, hosted service, React client in `Scripts/` (`viewer/` and `editor/` are the two page bundles, `site/` the shared Bootstrap shell; `Scripts/generated/` is produced by the build from `ILifeHub`, `ILifeClient` and `Frame`; commit it, never edit it). All client dependencies, Bootstrap and SignalR included, come from `package.json`. |
 | `tests/GameOfLife.Core.Tests` | xUnit: RLE round trips, engine vs. known patterns, viewport seam handling, loop commands. |
 | `tests/GameOfLife.Web.Tests` | xUnit integration tests: hub contract over the .NET SignalR client; page behaviour in headless Chromium via Playwright (initial state on connect, controls shared across browsers, viewports per browser, exclusive editing with its banner and countdown). |
 | `patterns/` | Example `.rle` files (Gosper glider gun). |
@@ -48,6 +49,11 @@ Playwright package, which the test fixture downloads on first run (about 150 MB,
 - **Single writer.** `SimulationLoop` owns the `Universe`. Every mutation (start, pause, step,
   reset, load, speed, edit) is a command posted to a channel and applied between generations. After each
   change it publishes an immutable `UniverseSnapshot`.
+- **Razor is the shell, React is the page.** Each Razor page renders the layout, the server-side
+  constants, the anti-forgery token and the URLs as data attributes on a mount element, and a
+  React bundle takes over from there. Forms still post to the Razor handlers. The `useLifeHub`
+  hook owns the SignalR connection and the generated typed proxy; canvas drawing stays imperative
+  inside an effect. Element ids are stable because the Playwright tests drive the page by them.
 - **Exclusive editing lives in the loop.** An `EditSession` names one owner (a connection id) and a
   deadline. Start, step, reset and load throw `EditInProgressException` while it exists, which is
   why the seed upload page cannot bypass it either. The hub maps the owner's viewport-relative
