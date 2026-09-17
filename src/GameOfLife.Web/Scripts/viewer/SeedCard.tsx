@@ -1,7 +1,8 @@
-import type { ViewerConfig } from "./Viewer";
+import { useViewerConfig } from "./ViewerConfigContext";
 
 /** Seeding stays a plain form post to the Razor page; React only renders it. */
-export function SeedCard({ config }: { config: ViewerConfig }) {
+export function SeedCard() {
+  const config = useViewerConfig();
   return (
     <div className="card mb-3">
       <div className="card-header">Seed</div>

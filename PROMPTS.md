@@ -220,3 +220,13 @@ pages reduced to mount elements. `wwwroot/lib` and `wwwroot/css` are gone; `wwwr
 ignored. All existing tests pass unchanged except the upload test, which now reads the anti-forgery
 token from the mount element. Three new Playwright tests cover the seed editor (presets, clicks,
 keyboard, RLE round trip, inline errors, seeding the universe through the Razor handler).
+
+### 13. Viewer configuration through a React context
+
+> Let's use a context for the ViewerConfig, so that it doesn't need to be passed around. Initial
+> state is seeded from the data attributes, just like now.
+
+Result: `Scripts/viewer/ViewerConfigContext.tsx` holds the `ViewerConfig` type, a
+`ViewerConfigProvider` and a `useViewerConfig` hook that throws outside a provider. `main.tsx` still
+reads the mount element's data attributes and now wraps `<Viewer />` in the provider; `Viewer`,
+`SimulationCard`, `ViewportCard` and `SeedCard` read the config from the hook instead of props.

@@ -1,11 +1,10 @@
 import { useEffect, useState } from "react";
 import type { Frame } from "../generated/GameOfLife.Web.Simulation";
-import type { ViewerConfig } from "./Viewer";
+import { useViewerConfig } from "./ViewerConfigContext";
 
 export interface ViewportCardProps {
   frame: Frame | null;
   ready: boolean;
-  config: ViewerConfig;
   onPan(dx: number, dy: number): void;
   onZoom(factor: number): void;
   onRecentre(): void;
@@ -13,7 +12,8 @@ export interface ViewportCardProps {
 }
 
 /** The controls that affect only this client: pan, recentre, grid size, zoom. */
-export function ViewportCard({ frame, ready, config, onPan, onZoom, onRecentre, onResize }: ViewportCardProps) {
+export function ViewportCard({ frame, ready, onPan, onZoom, onRecentre, onResize }: ViewportCardProps) {
+  const config = useViewerConfig();
   const width = frame?.width ?? config.defaultGridSize;
   const height = frame?.height ?? config.defaultGridSize;
 

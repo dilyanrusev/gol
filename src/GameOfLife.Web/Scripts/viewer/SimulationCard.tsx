@@ -3,17 +3,17 @@ import OverlayTrigger from "react-bootstrap/OverlayTrigger";
 import Tooltip from "react-bootstrap/Tooltip";
 import type { Frame } from "../generated/GameOfLife.Web.Simulation";
 import type { LifeHub } from "./useLifeHub";
-import type { ViewerConfig } from "./Viewer";
+import { useViewerConfig } from "./ViewerConfigContext";
 
 export interface SimulationCardProps {
   frame: Frame | null;
   ready: boolean;
-  config: ViewerConfig;
   call: LifeHub["call"];
 }
 
 /** The controls shared by every client: start, pause, step, reset, speed, and entering edit mode. */
-export function SimulationCard({ frame, ready, config, call }: SimulationCardProps) {
+export function SimulationCard({ frame, ready, call }: SimulationCardProps) {
+  const config = useViewerConfig();
   const running = frame?.running ?? false;
   const editing = frame?.editing ?? false;
   const mine = frame?.editingByMe ?? false;

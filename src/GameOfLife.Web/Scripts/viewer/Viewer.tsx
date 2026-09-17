@@ -7,20 +7,7 @@ import { StatusBar } from "./StatusBar";
 import { UniverseCanvas } from "./UniverseCanvas";
 import { ViewportCard } from "./ViewportCard";
 import { useLifeHub, type LifeHub } from "./useLifeHub";
-
-/** Server-side constants and URLs, read from the mount element's data attributes. */
-export interface ViewerConfig {
-  defaultGridSize: number;
-  minGridSize: number;
-  maxGridSize: number;
-  minSpeed: number;
-  maxSpeed: number;
-  currentSpeed: number;
-  uploadUrl: string;
-  exportUrl: string;
-  editorUrl: string;
-  antiforgeryToken: string;
-}
+import { useViewerConfig } from "./ViewerConfigContext";
 
 /** Cells smaller than this (CSS px) cannot be targeted reliably, so clicks are refused until the user zooms in. */
 const MIN_EDIT_CELL_PX = 4;
@@ -58,7 +45,8 @@ function editHint(frame: Frame | null): string {
   return "Click Edit cells, then click cells in the view to flip them.";
 }
 
-export function Viewer({ config }: { config: ViewerConfig }) {
+export function Viewer() {
+  const config = useViewerConfig();
   const hub = useLifeHub();
   const { frame, ready, status, setStatus, call } = hub;
 
@@ -91,9 +79,9 @@ export function Viewer({ config }: { config: ViewerConfig }) {
           <p className="form-text" id="edit-hint">{editHint(ready ? frame : null)}</p>
         </div>
         <div className="col-lg-4">
-          <SimulationCard frame={frame} ready={ready} config={config} call={call} />
-          <ViewportCard frame={frame} ready={ready} config={config} onPan={pan} onZoom={zoom} onRecentre={recentre} onResize={resize} />
-          <SeedCard config={config} />
+          <SimulationCard frame={frame} ready={ready} call={call} />
+          <ViewportCard frame={frame} ready={ready} onPan={pan} onZoom={zoom} onRecentre={recentre} onResize={resize} />
+          <SeedCard />
         </div>
       </div>
     </>

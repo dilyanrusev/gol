@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { readConfig } from "../shared/dataset";
-import { Viewer, type ViewerConfig } from "./Viewer";
+import { Viewer } from "./Viewer";
+import { ViewerConfigProvider, type ViewerConfig } from "./ViewerConfigContext";
 
 const root = document.getElementById("viewer-root");
 if (!root) throw new Error("The page has no #viewer-root element to mount the viewer on.");
@@ -19,4 +20,8 @@ const config: ViewerConfig = {
   antiforgeryToken: data.string("antiforgeryToken"),
 };
 
-createRoot(root).render(<Viewer config={config} />);
+createRoot(root).render(
+  <ViewerConfigProvider config={config}>
+    <Viewer />
+  </ViewerConfigProvider>,
+);
