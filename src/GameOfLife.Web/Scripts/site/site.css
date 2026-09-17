@@ -8,12 +8,80 @@ html {
     }
 }
 
+/* --- Fixed-height page: navbar, then main filling the rest. Pages that need to scroll do so inside main. --- */
+html, body {
+    height: 100%;
+}
+
+.app-body {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+}
+
+.app-main {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 1rem;
+}
+
+/* --- Universe page: the canvas takes whatever height is left; nothing else stretches. --- */
+.viewer-root {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.viewer-row {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.viewer-main {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+/*
+ * The canvas is taken out of flow inside its wrapper: a canvas's bitmap size is also its intrinsic
+ * size, so an in-flow canvas with height 100% would feed its own last size back into the layout.
+ */
+.viewer-canvas-wrap {
+    position: relative;
+    flex: 1 1 0;
+    min-height: 200px; /* below this the page scrolls rather than squashing the universe */
+    overflow: hidden;
+}
+
 .universe-canvas {
-    aspect-ratio: 1 / 1;
-    max-height: 85vh;
+    position: absolute;
+    inset: 0;
     display: block;
+    width: 100%;
+    height: 100%;
     touch-action: none; /* we handle pan and pinch ourselves */
     cursor: grab;
+}
+
+@media (min-width: 992px) {
+    /* A tall sidebar scrolls by itself so the canvas column never forces the page to. */
+    .viewer-sidebar {
+        max-height: 100%;
+        overflow-y: auto;
+    }
+}
+
+@media (max-width: 991.98px) {
+    /* Stacked layout: a flexible height means nothing, so the canvas gets a sensible fixed one. */
+    .viewer-canvas-wrap {
+        flex: none;
+        height: min(100vw, 70dvh);
+    }
 }
 
 .universe-canvas:active {

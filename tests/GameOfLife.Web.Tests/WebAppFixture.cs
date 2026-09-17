@@ -78,14 +78,11 @@ public sealed class WebAppFixture : WebApplicationFactory<Program>, IAsyncLifeti
         await Loop.LoadAsync(Blinker);
     }
 
-    /// <summary>
-    /// A page in its own context. The viewport is tall enough for the whole universe page, so no
-    /// test has to scroll; with scrolling, the sticky edit banner would cover the top of the canvas.
-    /// </summary>
-    public Task<IPage> NewPageAsync() => Browser.NewPageAsync(new()
+    /// <summary>A page in its own context, at Playwright's default 1280 x 720 unless a viewport is given.</summary>
+    public Task<IPage> NewPageAsync(ViewportSize? viewport = null) => Browser.NewPageAsync(new()
     {
         BaseURL = BaseAddress.ToString(),
-        ViewportSize = new() { Width = 1280, Height = 1400 },
+        ViewportSize = viewport,
     });
 
     Task IAsyncLifetime.DisposeAsync() => DisposeAsync().AsTask();

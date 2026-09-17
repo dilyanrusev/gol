@@ -119,7 +119,7 @@ export function UniverseCanvas({ frame, editing, onPan, onZoom, onRecentre, onCe
     <canvas
       id="universe"
       ref={canvasRef}
-      className={`universe-canvas w-100 border rounded bg-body-tertiary${editing ? " editing" : ""}`}
+      className={`universe-canvas border rounded bg-body-tertiary${editing ? " editing" : ""}`}
       tabIndex={0}
       aria-label="Game of Life universe viewport. Drag or use arrow keys to pan, scroll or pinch to zoom."
     />

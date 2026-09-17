@@ -80,19 +80,23 @@ export function Viewer() {
   return (
     <>
       <EditBanner frame={frame} ready={ready} onDone={() => void call("endEdit")} onCancel={() => void call("cancelEdit")} />
-      <div className="row g-3">
-        <div className="col-lg-8">
+      <div className="row g-3 viewer-row">
+        <div className="col-lg-8 viewer-main">
           <StatusBar status={status} frame={ready ? frame : null} />
           <ToolbarStrip className="mb-2">
             {toolbar.navigation}
             {!wide && toolbar.size}
           </ToolbarStrip>
-          <UniverseCanvas frame={view} editing={editingByMe} onPan={pan} onZoom={zoom} onRecentre={recentre} onCellTap={tapCell} />
+          <div className="viewer-canvas-wrap">
+            <UniverseCanvas frame={view} editing={editingByMe} onPan={pan} onZoom={zoom} onRecentre={recentre} onCellTap={tapCell} />
+          </div>
           {wide && <ToolbarStrip className="mt-2">{toolbar.size}</ToolbarStrip>}
-          <p className="form-text">Drag to pan, scroll or pinch to zoom. Keyboard: arrows pan, + and - zoom, Home recentres.</p>
-          <p className="form-text" id="edit-hint">{editHint(ready ? frame : null)}</p>
+          <p className="form-text mb-0">
+            <span>Drag to pan, scroll or pinch to zoom. Keyboard: arrows pan, + and - zoom, Home recentres.</span>{" "}
+            <span id="edit-hint">{editHint(ready ? frame : null)}</span>
+          </p>
         </div>
-        <div className="col-lg-4">
+        <div className="col-lg-4 viewer-sidebar">
           <SimulationCard frame={frame} ready={ready} call={call} />
           <SeedCard />
         </div>

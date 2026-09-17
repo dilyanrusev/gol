@@ -7,7 +7,7 @@
     @* Bootstrap and the site styles, bundled by esbuild from Scripts/site (see build.mjs). *@
     <link rel="stylesheet" href="~/dist/site.css" asp-append-version="true" />
 </head>
-<body>
+<body class="app-body">
     <header>
         <nav class="navbar navbar-expand-sm bg-body-tertiary border-bottom mb-3">
             <div class="container-fluid">
@@ -25,11 +25,10 @@
             </div>
         </nav>
     </header>
-    <div class="container-fluid">
-        <main role="main" class="pb-3">
-            @RenderBody()
-        </main>
-    </div>
+    @* The page is a fixed-height column: the navbar, then main taking the rest and scrolling on its own if a page needs it. *@
+    <main role="main" class="app-main container-fluid">
+        @RenderBody()
+    </main>
 
     <script type="module" src="~/dist/site.js" asp-append-version="true"></script>
     @await RenderSectionAsync("Scripts", required: false)

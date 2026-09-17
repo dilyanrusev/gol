@@ -37,26 +37,26 @@ export function EditBanner({ frame, ready, onDone, onCancel }: EditBannerProps) 
   const mine = frame.editingByMe;
 
   return (
-    <div id="edit-banner" className={`alert alert-${level} sticky-top shadow mb-3`} role="status" aria-live="polite">
-      <div className="d-flex flex-wrap align-items-center gap-3">
+    <div id="edit-banner" className={`alert alert-${level} sticky-top shadow py-2 mb-2`} role="status" aria-live="polite">
+      <div className="d-flex flex-wrap align-items-center gap-2 gap-md-3 small">
         <div className="flex-grow-1">
           <strong id="edit-banner-title">{mine ? "You are editing the universe." : "Another client is editing the universe."}</strong>{" "}
           <span id="edit-banner-text">
             {mine
-              ? "Nobody can start, step or reset until you finish. Done keeps your edits and resumes the simulation; Cancel discards them and stays paused. Every click restarts the timer; when it runs out your edits are kept and the simulation stays paused."
-              : "Start, Step and Reset are disabled for everyone until they finish or the timer runs out. Each of their edits restarts the timer."}
+              ? "Done keeps your edits and resumes the simulation; Cancel discards them. Start, Step and Reset are blocked for everyone until then or until the timer runs out; each edit restarts it."
+              : "Start, Step and Reset are disabled for everyone until they finish or the timer runs out; each of their edits restarts it."}
           </span>
         </div>
         <div className="text-nowrap">Unlocks in <strong id="edit-countdown" className="font-monospace">{countdown}</strong></div>
         {mine && (
-          <div className="btn-group" id="edit-banner-actions" role="group" aria-label="Finish editing">
+          <div className="btn-group btn-group-sm" id="edit-banner-actions" role="group" aria-label="Finish editing">
             <button type="button" className="btn btn-primary" id="btn-edit-done" onClick={onDone}>Done</button>
             <button type="button" className="btn btn-outline-secondary" id="btn-edit-cancel" onClick={onCancel}>Cancel</button>
           </div>
         )}
       </div>
       <div className="progress mt-2" id="edit-progress" role="progressbar" aria-label="Time left before editing unlocks"
-           aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(fraction * 100)}>
+           aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(fraction * 100)} style={{ height: "0.4rem" }}>
         <div className={`progress-bar bg-${level}`} id="edit-progress-bar" style={{ width: `${fraction * 100}%` }} />
       </div>
     </div>

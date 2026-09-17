@@ -257,3 +257,22 @@ Result: `ViewportToolbar.tsx` (a hook returning the navigation and size groups, 
 `ViewportCard` removed, the right column keeps Simulation and Seed only. The pan pad CSS is gone.
 Test pages now use a 1280 x 1400 viewport: the extra strip made Playwright scroll, and the sticky
 edit banner then covered the canvas corner a test clicks (diagnosed with elementFromPoint).
+
+### 16. No vertical scrolling for the canvas column
+
+> Can you make sure that no vertical scrolling is needed to view the col-lg-8? Can you say what
+> your approach would be fore writing any code?
+
+> ok, go ahead
+
+Approach agreed first: a fixed-height flex page (navbar, then `main` filling the rest and scrolling
+on its own for pages that need it, like the seed editor); the canvas takes the height that is left
+instead of dictating it (the drawing already centres a square grid in any rectangle); the sidebar
+scrolls by itself from lg up; a fixed canvas height below lg; the two hint lines merged into one.
+
+Result: layout and CSS as planned, the canvas absolutely positioned inside its wrapper (an in-flow
+canvas with height 100% feeds its bitmap size back into the layout), the edit banner compacted
+(shorter copy, small text, thin progress bar) because at 992 x 600 it alone took 184 px. New
+`LayoutBrowserTests`: no document or main overflow with the banner showing at 1280 x 720 and
+992 x 600, every control inside the viewport, and a 500 px-tall window where the sidebar, not the
+page, scrolls. The test fixture is back to Playwright's default viewport.
