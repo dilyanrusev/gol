@@ -240,3 +240,20 @@ reads the mount element's data attributes and now wraps `<Viewer />` in the prov
 Result: `react-bootstrap-icons` (SVG components, so no icon font to serve) provides the filled
 carets, the bullseye and zoom icons; every viewport button is wrapped in a react-bootstrap tooltip
 that also states the pan step in cells. Accessible names stay on the buttons; icons are aria-hidden.
+
+### 15. Viewport toolbar instead of a card
+
+> Let's save some space. Lets turn the viewport card into a vertical toolbar that is on top until
+> the breakpoint (I think md currently) and top and bottom after the breakpoint. It should be thin
+> and take all width of the universe canvas. THe primary UI for changing the viewport is
+> tap/pan/wheel, etc
+
+Assumption stated: thin horizontal strips spanning the canvas width; below the layout's actual
+breakpoint (lg) one wrapping strip above the canvas holds everything, from lg up navigation and
+zoom stay above and the grid-size controls move to a strip below the canvas.
+
+Result: `ViewportToolbar.tsx` (a hook returning the navigation and size groups, plus a
+`ToolbarStrip`), a `useMediaQuery` hook deciding where the size group renders (no duplicate ids),
+`ViewportCard` removed, the right column keeps Simulation and Seed only. The pan pad CSS is gone.
+Test pages now use a 1280 x 1400 viewport: the extra strip made Playwright scroll, and the sticky
+edit banner then covered the canvas corner a test clicks (diagnosed with elementFromPoint).

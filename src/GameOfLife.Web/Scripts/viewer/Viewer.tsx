@@ -5,9 +5,13 @@ import { SeedCard } from "./SeedCard";
 import { SimulationCard } from "./SimulationCard";
 import { StatusBar } from "./StatusBar";
 import { UniverseCanvas } from "./UniverseCanvas";
-import { ViewportCard } from "./ViewportCard";
+import { ToolbarStrip, useViewportToolbar } from "./ViewportToolbar";
 import { useLifeHub, type LifeHub } from "./useLifeHub";
 import { useViewerConfig } from "./ViewerConfigContext";
+import { useMediaQuery } from "../shared/useMediaQuery";
+
+/** Bootstrap's lg breakpoint: where the page switches from one column to canvas-plus-sidebar. */
+const WIDE_LAYOUT = "(min-width: 992px)";
 
 /** Cells smaller than this (CSS px) cannot be targeted reliably, so clicks are refused until the user zooms in. */
 const MIN_EDIT_CELL_PX = 4;
@@ -68,19 +72,28 @@ export function Viewer() {
     void call("toggleCell", x, y);
   }, [editingByMe, call, setStatus]);
 
+  // Gestures are the primary way to move the viewport; the toolbar is thin and hugs the canvas.
+  // Narrow screens get one strip above the canvas; from lg up the grid size moves below it.
+  const toolbar = useViewportToolbar({ frame, ready, onPan: pan, onZoom: zoom, onRecentre: recentre, onResize: resize });
+  const wide = useMediaQuery(WIDE_LAYOUT);
+
   return (
     <>
       <EditBanner frame={frame} ready={ready} onDone={() => void call("endEdit")} onCancel={() => void call("cancelEdit")} />
       <div className="row g-3">
         <div className="col-lg-8">
           <StatusBar status={status} frame={ready ? frame : null} />
+          <ToolbarStrip className="mb-2">
+            {toolbar.navigation}
+            {!wide && toolbar.size}
+          </ToolbarStrip>
           <UniverseCanvas frame={view} editing={editingByMe} onPan={pan} onZoom={zoom} onRecentre={recentre} onCellTap={tapCell} />
+          {wide && <ToolbarStrip className="mt-2">{toolbar.size}</ToolbarStrip>}
           <p className="form-text">Drag to pan, scroll or pinch to zoom. Keyboard: arrows pan, + and - zoom, Home recentres.</p>
           <p className="form-text" id="edit-hint">{editHint(ready ? frame : null)}</p>
         </div>
         <div className="col-lg-4">
           <SimulationCard frame={frame} ready={ready} call={call} />
-          <ViewportCard frame={frame} ready={ready} onPan={pan} onZoom={zoom} onRecentre={recentre} onResize={resize} />
           <SeedCard />
         </div>
       </div>

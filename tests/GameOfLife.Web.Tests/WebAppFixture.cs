@@ -78,7 +78,15 @@ public sealed class WebAppFixture : WebApplicationFactory<Program>, IAsyncLifeti
         await Loop.LoadAsync(Blinker);
     }
 
-    public Task<IPage> NewPageAsync() => Browser.NewPageAsync(new() { BaseURL = BaseAddress.ToString() });
+    /// <summary>
+    /// A page in its own context. The viewport is tall enough for the whole universe page, so no
+    /// test has to scroll; with scrolling, the sticky edit banner would cover the top of the canvas.
+    /// </summary>
+    public Task<IPage> NewPageAsync() => Browser.NewPageAsync(new()
+    {
+        BaseURL = BaseAddress.ToString(),
+        ViewportSize = new() { Width = 1280, Height = 1400 },
+    });
 
     Task IAsyncLifetime.DisposeAsync() => DisposeAsync().AsTask();
 
