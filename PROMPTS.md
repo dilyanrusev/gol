@@ -141,3 +141,13 @@ connect, refresh, resize clamping, rejected pan, shared start/pause, per-client 
 `BrowserTests` cover the page: paused/running state on connect, start in one browser seen in
 another, zoom affecting one browser only, controls disabled when the connection fails.
 `Program.cs` gained `public partial class Program` for the factory.
+
+### 9. Typed hub calls in the viewer
+
+> in viewer.ts, I see `call` that accepts method name as string. Can you make it use the generated
+> proxy files, i.e. ILifeHub from Scripts/generated/TypedSignalR.Client/GameOfLife.Web.Hubs.ts?
+
+Result: `call` is generic over `keyof ILifeHub` and takes `Parameters<ILifeHub[M]>`, looking the
+method up on the generated proxy. Call sites pass the name and arguments only; an unknown name or
+wrong argument list is a compile error (verified with a scratch file: 4 deliberate mistakes, 4
+errors, the valid call accepted). Web tests green.

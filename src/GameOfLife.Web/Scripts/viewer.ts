@@ -1,6 +1,7 @@
 import { attachGestures } from "./gestures.js";
 // Generated from the server's ILifeHub / ILifeClient / Frame by the build (see GameOfLife.Web.csproj).
 import { getHubProxyFactory, getReceiverRegister } from "./generated/TypedSignalR.Client/index.js";
+import type { ILifeHub } from "./generated/TypedSignalR.Client/GameOfLife.Web.Hubs.js";
 import type { Frame } from "./generated/GameOfLife.Web.Simulation.js";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -124,13 +125,18 @@ connection.onreconnecting(() => { setStatus("reconnecting…", "text-bg-warning"
 connection.onreconnected(initialiseFromHub);
 connection.onclose(() => { setStatus("disconnected", "text-bg-danger"); disableSimulationControls(); });
 
-/** Awaits a hub call, applies the frame it returns (if any) and surfaces hub errors in the status badge. */
-async function call(name: string, request: Promise<Frame | void>): Promise<void> {
+/**
+ * Invokes a hub method through the generated proxy, applies the frame it returns (if any) and
+ * surfaces hub errors in the status badge. The method name and arguments are checked against
+ * ILifeHub, so a renamed or re-typed server method fails to compile here.
+ */
+async function call<M extends keyof ILifeHub>(method: M, ...args: Parameters<ILifeHub[M]>): Promise<void> {
+  const invoke = hub[method] as (...a: Parameters<ILifeHub[M]>) => Promise<Frame | void>;
   try {
-    const result = await request;
+    const result = await invoke(...args);
     if (result) applyFrame(result);
   } catch (err) {
-    console.error(name, err);
+    console.error(method, err);
     setStatus((err as Error).message.replace(/^.*HubException: /, ""), "text-bg-danger");
   }
 }
@@ -149,25 +155,25 @@ function pan(dx: number, dy: number): void {
       const [x, y] = [pendingDx, pendingDy];
       pendingDx = pendingDy = 0;
       if (!Number.isSafeInteger(x) || !Number.isSafeInteger(y)) { setStatus("pan too large", "text-bg-danger"); break; }
-      await call("pan", hub.pan(x, y));
+      await call("pan", x, y);
     }
     inFlight = null;
   })();
 }
 
-const resize = (w: number, h: number) => call("resize", hub.resize(Math.round(w), Math.round(h)));
+const resize = (w: number, h: number) => call("resize", Math.round(w), Math.round(h));
 const zoom = (factor: number) => resize(frame.width * factor, frame.height * factor);
-const recentre = () => call("recentre", hub.recentre());
+const recentre = () => call("recentre");
 
 attachGestures(canvas, { pan, zoom, recentre, cellSize: () => cellPx });
 
 // ---------- buttons ----------
-$("btn-start").addEventListener("click", () => call("start", hub.start()));
-$("btn-pause").addEventListener("click", () => call("pause", hub.pause()));
-$("btn-step").addEventListener("click", () => call("step", hub.step()));
-$("btn-reset").addEventListener("click", () => call("reset", hub.reset()));
+$("btn-start").addEventListener("click", () => call("start"));
+$("btn-pause").addEventListener("click", () => call("pause"));
+$("btn-step").addEventListener("click", () => call("step"));
+$("btn-reset").addEventListener("click", () => call("reset"));
 speed.addEventListener("input", () => { $("speed-value").textContent = speed.value; });
-speed.addEventListener("change", () => call("setSpeed", hub.setSpeed(Number(speed.value))));
+speed.addEventListener("change", () => call("setSpeed", Number(speed.value)));
 
 $("btn-recentre").addEventListener("click", recentre);
 $("btn-zoom-in").addEventListener("click", () => zoom(0.8));
