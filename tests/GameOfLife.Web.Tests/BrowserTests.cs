@@ -36,11 +36,12 @@ public sealed class BrowserTests(WebAppFixture app) : IAsyncLifetime
         var page = await OpenAsync();
 
         await Expect(page.Locator("#status-running")).ToHaveTextAsync("paused");
-        await Expect(page.Locator("#btn-start")).ToBeEnabledAsync();
-        await Expect(page.Locator("#btn-pause")).ToBeDisabledAsync();
+        await Expect(page.Locator("#btn-run")).ToBeEnabledAsync();
+        await Expect(page.Locator("#btn-run")).ToHaveAttributeAsync("aria-label", "Start");
         await Expect(page.Locator("#status-generation")).ToHaveTextAsync("0");
         await Expect(page.Locator("#status-population")).ToHaveTextAsync("3");
-        await Expect(page.Locator("#status-viewport")).ToHaveTextAsync("100 × 100");
+        // The view is 100 cells across; its height follows the canvas's shape.
+        await Expect(page.Locator("#status-viewport")).ToHaveTextAsync(new System.Text.RegularExpressions.Regex(@"^100 × \d+$"));
     }
 
     [Fact]
@@ -51,8 +52,8 @@ public sealed class BrowserTests(WebAppFixture app) : IAsyncLifetime
         var page = await OpenAsync();
 
         await Expect(page.Locator("#status-running")).ToHaveTextAsync("running");
-        await Expect(page.Locator("#btn-start")).ToBeDisabledAsync();
-        await Expect(page.Locator("#btn-pause")).ToBeEnabledAsync();
+        await Expect(page.Locator("#btn-run")).ToBeEnabledAsync();
+        await Expect(page.Locator("#btn-run")).ToHaveAttributeAsync("aria-label", "Pause");
         await Expect(page.Locator("#status-generation")).Not.ToHaveTextAsync("0");
     }
 
@@ -62,13 +63,13 @@ public sealed class BrowserTests(WebAppFixture app) : IAsyncLifetime
         var first = await OpenAsync();
         var second = await OpenAsync();
 
-        await first.Locator("#btn-start").ClickAsync();
+        await first.Locator("#btn-run").ClickAsync();
         await Expect(second.Locator("#status-running")).ToHaveTextAsync("running");
-        await Expect(second.Locator("#btn-pause")).ToBeEnabledAsync();
+        await Expect(second.Locator("#btn-run")).ToHaveAttributeAsync("aria-label", "Pause");
 
-        await second.Locator("#btn-pause").ClickAsync();
+        await second.Locator("#btn-run").ClickAsync();
         await Expect(first.Locator("#status-running")).ToHaveTextAsync("paused");
-        await Expect(first.Locator("#btn-start")).ToBeEnabledAsync();
+        await Expect(first.Locator("#btn-run")).ToHaveAttributeAsync("aria-label", "Start");
     }
 
     [Fact]
@@ -79,9 +80,9 @@ public sealed class BrowserTests(WebAppFixture app) : IAsyncLifetime
 
         await first.Locator("#btn-zoom-in").ClickAsync();
 
-        await Expect(first.Locator("#status-viewport")).ToHaveTextAsync("80 × 80");
-        await Expect(first.Locator("#grid-width")).ToHaveValueAsync("80");
-        await Expect(second.Locator("#status-viewport")).ToHaveTextAsync("100 × 100");
+        await Expect(first.Locator("#status-viewport")).ToHaveTextAsync(new System.Text.RegularExpressions.Regex(@"^80 × \d+$"));
+        await Expect(first.Locator("#cells-across")).ToHaveValueAsync("80");
+        await Expect(second.Locator("#status-viewport")).ToHaveTextAsync(new System.Text.RegularExpressions.Regex(@"^100 × \d+$"));
     }
 
     [Fact]
@@ -95,8 +96,7 @@ public sealed class BrowserTests(WebAppFixture app) : IAsyncLifetime
 
         await Expect(page.Locator("#status-connection")).ToHaveTextAsync("connection failed");
         await Expect(page.Locator("#status-running")).ToHaveTextAsync("–");
-        await Expect(page.Locator("#btn-start")).ToBeDisabledAsync();
-        await Expect(page.Locator("#btn-pause")).ToBeDisabledAsync();
+        await Expect(page.Locator("#btn-run")).ToBeDisabledAsync();
         await Expect(page.Locator("#speed")).ToBeDisabledAsync();
     }
 }

@@ -25,7 +25,7 @@ public class IndexModel(SimulationLoop loop) : PageModel
     {
     }
 
-    /// <summary>Uploads an .rle file and makes it the new seed. The simulation is paused afterwards.</summary>
+    /// <summary>Uploads an .rle file and makes it the new initial state. The simulation is paused afterwards.</summary>
     public async Task<IActionResult> OnPostUploadAsync(IFormFile? file)
     {
         if (file is null || file.Length == 0)

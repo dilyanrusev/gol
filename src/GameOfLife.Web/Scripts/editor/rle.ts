@@ -1,5 +1,5 @@
 /**
- * A small RLE encoder/decoder for the seed editor (rule B3/S23 only). The server has the
+ * A small RLE encoder/decoder for the pattern editor (rule B3/S23 only). The server has the
  * authoritative parser; this one exists so the grid and the textarea can stay in sync.
  */
 export interface RlePattern {

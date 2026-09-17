@@ -62,7 +62,7 @@ const Row = memo(function Row({ y, cells, focusX }: { y: number; cells: Readonly
 });
 
 /**
- * The seed editor: a size x size matrix of real buttons (clickable, keyboard-navigable with a roving
+ * The pattern editor: a size x size matrix of real buttons (clickable, keyboard-navigable with a roving
  * tabindex) kept in sync with an RLE textarea that is posted back to the Razor page.
  */
 export function Editor({ config }: { config: EditorConfig }) {
@@ -191,7 +191,7 @@ export function Editor({ config }: { config: EditorConfig }) {
           <span className="align-self-center ms-auto">Live cells: <strong id="editor-count">{liveCount}</strong></span>
         </div>
         {error && <div className="alert alert-danger" role="alert" id="editor-error">{error}</div>}
-        <div id="editor-grid" ref={gridRef} className="editor-grid border rounded" role="grid" aria-label="Seed pattern"
+        <div id="editor-grid" ref={gridRef} className="editor-grid border rounded" role="grid" aria-label="Pattern"
              style={{ "--editor-size": size } as CSSProperties}
              onPointerDown={onPointerDown} onPointerMove={onPointerMove} onKeyDown={onKeyDown}>
           {rows.map((cells, y) => <Row key={y} y={y} cells={cells} focusX={focus.y === y ? focus.x : -1} />)}
@@ -213,7 +213,7 @@ export function Editor({ config }: { config: EditorConfig }) {
           </div>
           <div className="d-grid gap-2">
             <button type="button" className="btn btn-outline-secondary" id="btn-apply-rle" onClick={() => loadRle(rleText)}>Apply RLE to grid</button>
-            <button type="submit" className="btn btn-primary">Seed the universe</button>
+            <button type="submit" className="btn btn-primary">Use as initial state</button>
             <a className="btn btn-link" href={config.indexUrl}>Back to the universe</a>
           </div>
         </form>

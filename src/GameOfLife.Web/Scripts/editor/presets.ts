@@ -1,4 +1,4 @@
-/** Well-known patterns offered as one-click starting points in the seed editor. */
+/** Well-known patterns offered as one-click starting points in the pattern editor. */
 export const PRESETS: ReadonlyArray<{ key: string; label: string; rle: string }> = [
   { key: "glider", label: "Glider", rle: "x = 3, y = 3\nbob$2bo$3o!" },
   { key: "gun", label: "Glider gun", rle: "x = 36, y = 9\n24bo$22bobo$12b2o6b2o12b2o$11bo3bo4b2o12b2o$2o8bo5bo3b2o$2o8bo3bob2o4bobo$10bo5bo7bo$11bo3bo$12b2o!" },

@@ -49,6 +49,21 @@ Playwright package, which the test fixture downloads on first run (about 150 MB,
 - **Single writer.** `SimulationLoop` owns the `Universe`. Every mutation (start, pause, step,
   reset, load, speed, edit) is a command posted to a channel and applied between generations. After each
   change it publishes an immutable `UniverseSnapshot`.
+- **Only the canvas and one toolbar under normal conditions.** The strip above the canvas has a
+  leading group of in-place controls (run/pause, step, reset, speed, then Edit cells) and a trailing
+  group of everything that leaves the page or opens a panel (Load pattern…, Save .rle, then a
+  theme switch cycling light, dark and follow-the-system, remembered per browser, and Help). The
+  readouts (generation, population, view size) are a head-up display at the top centre of the
+  canvas that lets pointer events through; the connection badge shows there only while the
+  connection is unhealthy, and the run state is a hidden live region for screen readers. "Pattern" is what goes in; "initial state" is what Reset returns to. Pan and
+  recentre are a cross-shaped pad floating bottom-left over the canvas and zoom a stepper floating
+  bottom-right (zoom out, an editable "cells across" number, zoom in), split the way phone games and
+  map apps split continuous and discrete controls. Zoom is one variable, cells across the view; the
+  height follows the canvas's shape so the grid fills it, and follows again when the window changes; they are the single-pointer alternative to dragging and pinching
+  (WCAG 2.5.1 / 2.5.7), translucent until hovered, and grow to 44 px targets on touch. "Load
+  pattern…" opens a side panel on request; it and Edit cells are disabled with a tooltip while the
+  shared state forbids them, and an open panel disables its form rather than closing when someone
+  else starts.
 - **Razor is the shell, React is the page.** Each Razor page renders the layout, the server-side
   constants, the anti-forgery token and the URLs as data attributes on a mount element, and a
   React bundle takes over from there. Forms still post to the Razor handlers. The `useLifeHub`
@@ -63,10 +78,10 @@ Playwright package, which the test fixture downloads on first run (about 150 MB,
   `Recentre`). Deltas outside JavaScript's safe-integer range are rejected; grid size is clamped to
   5–500 cells per side. Each tick the server sends every client only the cells inside its viewport,
   packed as `y * width + x` indices.
-- **RLE everywhere.** Uploads, the seed editor and the "save" download all go through the same
+- **RLE everywhere.** Uploads, the pattern editor and the "save" download all go through the same
   parser/writer. Saved files carry a `#C origin x y` comment so they reload in place; files without
   it are centred on the universe.
-- **Seed editor** is a 100 x 100 matrix of real `<button>` elements: click or drag to paint,
+- **Pattern editor** is a 100 x 100 matrix of real `<button>` elements: click or drag to paint,
   arrow keys to move, Space/Enter to toggle. An RLE textarea stays in sync with the grid.
 
 Known limitation: saving a population that straddles the torus seam is refused, because its

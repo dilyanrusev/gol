@@ -37,14 +37,14 @@ public class EditorModel(SimulationLoop loop) : PageModel
             var pattern = RleParser.Parse(Rle);
             if (pattern.Width > GridSize || pattern.Height > GridSize)
             {
-                Error = $"The seed must fit in {GridSize} x {GridSize} cells; this one is {pattern.Width} x {pattern.Height}.";
+                Error = $"The pattern must fit in {GridSize} x {GridSize} cells; this one is {pattern.Width} x {pattern.Height}.";
                 return Page();
             }
             if (!string.IsNullOrWhiteSpace(Name))
                 pattern = pattern with { Name = Name.Trim() };
 
             await loop.LoadAsync(pattern);
-            TempData["Message"] = $"Seeded the universe with {pattern.Cells.Count} cells. Press Start to run it.";
+            TempData["Message"] = $"Loaded {pattern.Cells.Count} cells as the initial state. Press Start to run it.";
             return RedirectToPage("/Index");
         }
         catch (FormatException ex)

@@ -276,3 +276,250 @@ canvas with height 100% feeds its bitmap size back into the layout), the edit ba
 `LayoutBrowserTests`: no document or main overflow with the banner showing at 1280 x 720 and
 992 x 600, every control inside the viewport, and a 500 px-tall window where the sidebar, not the
 page, scrolls. The test fixture is back to Playwright's default viewport.
+
+### 17. Canvas and toolbars only
+
+> the seed card doesn't need to be visible all the time, only when the simulation doesn't run
+> (initial state), or it is reset. Do you see UX problems with this goal, or not? The overarching
+> goal I'm slowing going for is for the simulation canvas and toolbars to be the only UI visible
+> under normal conditions.
+
+> go ahead, do it in one pass
+
+Assessment given first: visibility driven by shared state lets other clients yank the seed card
+away mid-upload; generation 0 is too narrow a condition; export would be hidden when it matters;
+discoverability suffers. Agreed remedy: availability follows shared state, visibility follows the
+user's intent.
+
+Result: the sidebar is gone. `SimulationControls` (icon buttons, Edit with its explained-disabled
+wrapper, compact speed slider) and the compact `StatusBar` share the top strip; navigation, grid
+size, a Seed button and an Export link share the bottom strip (one wrapping strip below lg).
+`SeedOffcanvas` (react-bootstrap Offcanvas) holds the upload form and the editor link; its form is
+disabled with an explanation while running or editing, but the panel never closes on its own. Shared
+`IconButton` / `ExplainedWhenDisabled`. New `SeedBrowserTests` (panel opens/closes, disabled with
+tooltip while running, stays open but disables when someone starts, export blocked only while
+editing, nothing but canvas and two strips visible); layout tests cover 1280 x 500 and 600 x 900.
+
+### 18. Dismissible gesture hint
+
+> let's turn "Drag to pan, scroll or pinch to zoom. Keyboard: arrows pan, + and - zoom, Home
+> recentres." into a dismissible alert, so that the user can close it. Store its state in
+> localStorage (that is, don't show it if a given browser has had it closed. Before doing this,
+> comfirm if this goes against UX best practices
+
+Confirmed as an accepted pattern with two guards: the information must stay reachable (a help
+button in the toolbar re-shows the hint and clears the stored dismissal) and state-dependent text
+must not be bundled with it (the edit hint stays a separate line). The storage key is versioned so
+a reworded hint appears once more; storage failures default to showing.
+
+Result: `useStoredFlag` hook, `GestureHint` (Bootstrap dismissible alert), `#btn-help` in the
+toolbar, `HintBrowserTests` (first visit shows it; dismissal survives reload; help brings it back
+and forgets the dismissal).
+
+### 19. Centred toolbar icons
+
+> Can you take a look at the tooltip buttons? The icons don't look centered. Can you take a
+> screenshot and verify? It looks most visible in .viewer-toolbar
+
+Verified with Playwright screenshots at 3x device scale (the Chrome extension was not connected):
+inline SVG icons sat on the text baseline, visibly above the buttons' centre. Fix: toolbar buttons
+lay out their content with inline-flex, centred both ways, line-height 1 and a min-height equal to
+a text-only small button, so icon-only and icon-plus-text buttons share one height. The strips got
+ids (`#toolbar-top`, `#toolbar-bottom`) for reliable targeting. Re-captured crops show the icons
+centred.
+
+### 20. Gesture hint close button
+
+> Can you take a look a #gesture-hint. When visible, the closing x is not style correctly. It seems
+> that the close button wants more space than the div has.
+
+Measured with Playwright: the alert was 39 px tall, Bootstrap's absolutely positioned
+`.alert-dismissible .btn-close` (1.25 rem vertical padding) 54 px, overflowing by 16 px. Fix: the
+hint is a flex row (`d-flex align-items-center`) with an in-flow close button instead of
+`alert-dismissible`, so the button is centred and no taller than the alert.
+
+### 21. UX audit, first pass
+
+> before that, analyze the ui and look for UX inconsistencies, then report
+
+> Ok, go with the order you suggested
+
+Audit (from headless screenshots of nine states plus a code read) reported contradictions,
+inconsistent patterns, wording and visual signals. This pass takes the suggested order:
+
+- Dark mode: `data-bs-theme="auto"` is not a Bootstrap value, so the page was always light. An
+  inline head script now sets the theme from the OS preference before first paint and the shell
+  script keeps it in step; the canvas redraws on the theme attribute (MutationObserver) instead of
+  the media query.
+- Error channel: hub refusals and warnings are transient toasts over the canvas (`#notice`,
+  auto-hide) instead of overwriting the connection badge.
+- Export: wrapped in the explained-when-disabled pattern so its reason shows while editing.
+- Grid size: out-of-range sides are clamped client-side with a notice naming the limits.
+- Start/Pause no longer carry the pressed (`active`) style while disabled.
+- The viewport outline uses the border colour, not danger red.
+- Canvas overlays for what an empty-looking canvas cannot say: empty universe (Seed it / Draw
+  cells), pattern outside the view (Recentre), tiny pattern (Zoom in, which recentres on the
+  visible cells and shrinks the viewport around them).
+
+`FeedbackBrowserTests` cover each. Wording and the instruction rework remain for a later pass.
+
+### 22. One run/pause button
+
+> Let's combine the play/pause button into one.
+
+Result: `#btn-run` shows Play (green, "Start") while paused and Pause (yellow, "Pause") while
+running; it is disabled while editing blocks a start. Tests that addressed `#btn-start` and
+`#btn-pause` now address the one button and assert its accessible name for the state.
+
+### 23. Navigation pad over the canvas
+
+> Let's discuss: should pan buttons be assitance-only visible? The main method of interaction is
+> mouse/touch.
+
+> What about an overlay that is circle-shaped over the canvas? Or even, no necessarily an overlay,
+> but the buttons are layed out so that directions make sense (up is up, etc)?
+
+> I agree with your suggestion with overlay
+
+Discussion: the pan/zoom buttons are the required single-pointer alternative to drag and pinch
+(WCAG 2.5.1, 2.5.7), so they must stay visible to sighted users; hiding them for assistive
+technology only helps nobody who needs them. A row breaks stimulus-response mapping; a cross of
+real buttons keeps it without wedge hit-testing; a corner overlay follows the map-control
+convention.
+
+Result: `NavigationPad` (cross with Recentre in the middle, zoom stacked beside, bottom-right of
+the canvas, translucent until hover/focus, 44 px targets on coarse pointers, only the buttons take
+pointer events). The bottom strip is gone: grid size and the seed tools moved into the top strip;
+notices moved to the top-right corner; `useMediaQuery` removed. `NavigationBrowserTests` check
+placement, direction geometry, single strip, panning off and back into view, and touch sizing.
+
+### 24. Pan left, zoom right
+
+> lets move the two sets of controls - pan/centre and zoom to the two sides. What is common with
+> video games on phones? There, usually one of the virtual pads is used for camera, the other for
+> movement. If there are better practices for left/right placements, tell me about it
+
+Practice: twin-stick games put the continuous directional input under the left thumb and discrete
+or precise input under the right, following handedness; map apps keep zoom on the right and leave
+the left free for dragging; bottom corners are the easiest thumb reach; controls stay inset from
+the edge-swipe zones; a mirror option serves left-handed users (offered as a follow-up).
+
+Result: the pan cross (with Recentre) floats bottom-left, the zoom stack bottom-right, both inset
+1 rem, sharing a baseline. Tests check both clusters' placement, the edge inset, the shared
+baseline, and the direction geometry.
+
+### 25. Pad icon vanishing on hover
+
+> When I click the zoom button and leave the mouse inside, the icon disappears. Can you look into it/
+
+Cause (measured: colour and background both rgb(255,255,255) with the button focused): the pad
+buttons used the `bg-body` utility to be opaque over the canvas, and its `!important` background
+kept winning while the outline button's hover/focus state switched the icon to white. Fix: the rest
+background is set through Bootstrap's `--bs-btn-bg` variable instead, so hover, focus and active
+states keep their own contrasting colours. A regression test checks the button's colour differs
+from its background at rest, hovered, and focused after a click.
+
+### 26. "Seed" wording
+
+> Do you think the text for the seed button can be improved?
+
+> Ok, apply the change
+
+"Seed" was a bare noun on an action button, hid that a panel follows, and was overloaded across the
+page (the pattern that goes in versus the initial state Reset returns to). Applied: "Load pattern…"
+(ellipsis: a panel follows), panel "Load a pattern", "Upload an .rle file" / Load, "Draw a
+pattern", empty state "Load a pattern", Reset "Back to the initial state, generation 0", Recentre
+"Back to the centre of the pattern", nav "Pattern editor", editor submit "Use as initial state",
+server messages to match. Element ids are unchanged.
+
+### 27. Instructions where the action is
+
+> the text `Click Edit cells, then click cells in the view to flip them.` is still visible by default
+
+The instruction rework discussed earlier, applied: the persistent hint line is gone; the enabled
+Edit cells button (and Load pattern…) explain their purpose on hover via `ExplainedWhenDisabled`,
+which now carries a tip for the enabled state too; while editing, a caption on the canvas
+(`#canvas-editing`) says how; the one-time tip mentions drawing and points at Help; Help opens a
+reference panel (`HelpOffcanvas`: moving, keyboard, editing, patterns) with a "Show the quick tip
+again" button when the tip is dismissed. The tip's storage key moved to v2 so it shows once more.
+
+### 28. One zoom variable
+
+> now let's discuss the .viewport-size UI. This mirrors the zoom controls. First, the Apply button is
+> no longer necessary. With some throttling, we can bind it to the current zoom level. The Grid label
+> should not be necessary. I think it should be close to the zoom controls. What are best UX
+> practices when it comes to this kind of duplicate controls?
+
+> I don't see hard requiremnts for randome rect size in @TASK.md , so I think a single value offers
+> the best UX
+
+Practice: controls for one variable sit together; the precise one is the readout of the coarse one
+(a stepper field); no Apply for a single reversible value (commit on Enter/blur, debounce typing);
+label in the tooltip and accessible name; and decide whether it is one variable or two.
+
+Result: one variable, cells across the view. The zoom cluster is a stepper: zoom out, an editable
+number (`#cells-across`, Enter/blur/500 ms debounce, Shift+arrows step by ten, clamped with a
+notice), zoom in. The height is derived from the canvas's aspect so the grid fills the canvas, and
+the view re-requests a matching height 250 ms after the canvas changes shape. The grid-size input
+group and Apply are gone from the toolbar (`ViewportToolbar.tsx` replaced by `ToolbarStrip.tsx`).
+Tests now assert on the width and compute click targets from the reported view size.
+Also found on the way: the canvas message panels (empty, off-screen, tiny, editing) intercepted
+clicks on the cells beneath them; they now let pointer events through and only their buttons take
+clicks, so the editing caption never blocks a cell.
+
+### 29. Tooltips on the status figures
+
+> Ok, when I enter a value, e.g. 30, on a resolution of 1184x919, the view results in 30x20
+> according to the label on #status-viewport.
+
+> Ok, but a tip on #status-viewport that explains what this means
+
+Explained as intended (the height follows the canvas's shape). Added tooltips to the three status
+figures: View ("cells across × down; the zoom controls set the width, the height follows the shape
+of the canvas"), Gen (generations since the initial state) and Pop (live cells in the whole
+universe, not only in the view). The figures are focusable so keyboard users get the tooltips too.
+
+### 30. Toolbar regrouped; readouts as a head-up display
+
+> Can you take a look at the top of the toolbar and give suggestions about the UX - what can be
+> rearranged, so that it is more logical, e.g. things that work together are grouped together
+
+> Let's discuss: what if the current `d-flex flex-wrap align-items-center gap-2 small ms-auto` group
+> is turned into an overlay on the top center of the canvas? Then, the buttons that do most of the
+> changes (e,g. edit cells, load pattern, help - all either redirect, or show offcanvas) are to the
+> end (right on most screens).
+
+> I agree with your feedback, proceed
+
+Result: `CanvasHud` (top centre of the canvas, pass-through pointer events except on the figures,
+tabular numbers with reserved widths, connection badge only while unhealthy, run state as a hidden
+`aria-live` region). Strip: transport group (run/pause, step, reset set apart, speed with a unit
+tooltip), a rule, Edit cells; flexible space; Load pattern…, Save .rle (now with a word), a rule,
+Help. Groups are nowrap flex boxes so the strip wraps between groups. Toasts moved to the bottom
+centre. `StatusBar.tsx` removed.
+Follow-up: at phone widths the top-left prompt collided with the HUD; prompts now sit below the
+HUD row under 768 px, and the narrow layout test asserts the two boxes do not overlap.
+
+### 31. Theme switch
+
+> Ok, before that. Can you add a toolbar button that switches dark mode on demand? It requires only
+> an icon and a tooltip. I think it sould be placed before the help button. If you don't find UX
+> problems with that, implement it, and then reword the commit message summary if necessary
+
+One refinement: a two-state toggle would silently discard "follow the system", so the button cycles
+light, dark, system (as Bootstrap's docs do), the icon shows the current mode and the tooltip names
+the next one. `shared/theme.ts` owns the rules (stored under `gol.theme`, applied as the Bootstrap
+theme attribute); the shell applies it on every page and follows the OS while in system mode; the
+layout's inline head script applies the stored choice before first paint. `ThemeButton` sits before
+Help. A test cycles the modes, checks persistence across pages and reloads, and the return to system.
+
+### 32. Tooltips follow a mode switch
+
+> Can you force-redraw the tooltip, if visible? If I have the tooltip opened, then click the button,
+> the old tooltip is displayed, which can be confusing. Also, is there an icon that is typical for
+> system-defined?
+
+`IconButton` now controls its tooltip's visibility and keys the tooltip element on its text, so a
+click that changes the text re-renders the open tooltip at once. The theme test hovers, clicks
+twice and checks the tooltip names the next mode each time. Icon: `circle-half` is the convention
+Bootstrap's own theme switcher uses for "auto"; kept.

@@ -2,13 +2,13 @@
 @model EditorModel
 @inject Microsoft.AspNetCore.Antiforgery.IAntiforgery Antiforgery
 @{
-    ViewData["Title"] = "Seed editor";
+    ViewData["Title"] = "Pattern editor";
 }
 
 <h1 class="h3">Draw the initial state</h1>
 <p class="text-body-secondary">
     Click a cell to toggle it. Use the arrow keys to move, Space or Enter to toggle, and drag to paint.
-    The @EditorModel.GridSize × @EditorModel.GridSize grid is placed at the centre of the universe when you seed it.
+    The @EditorModel.GridSize × @EditorModel.GridSize grid is placed at the centre of the universe and becomes its initial state.
 </p>
 
 @if (Model.Error is not null)
@@ -27,7 +27,7 @@
      data-action="@Url.Page("/Editor")"
      data-index-url="@Url.Page("/Index")"
      data-antiforgery-token="@Antiforgery.GetAndStoreTokens(HttpContext).RequestToken">
-    <noscript><p class="alert alert-warning">The seed editor needs JavaScript.</p></noscript>
+    <noscript><p class="alert alert-warning">The pattern editor needs JavaScript.</p></noscript>
 </div>
 
 @section Scripts {

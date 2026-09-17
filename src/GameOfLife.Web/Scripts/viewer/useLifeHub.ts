@@ -7,10 +7,22 @@ import type { Frame } from "../generated/GameOfLife.Web.Simulation";
 
 export type StatusVariant = "secondary" | "success" | "warning" | "danger";
 
+/** The connection's state, and nothing else. */
 export interface Status {
   text: string;
   variant: StatusVariant;
 }
+
+/** A transient message about something the user just did: a refused request, a warning. */
+export interface Notice {
+  text: string;
+  variant: "warning" | "danger";
+  /** Distinguishes consecutive notices with the same text, so each one restarts the auto-hide. */
+  key: number;
+}
+
+/** How long a notice stays before it hides on its own. */
+export const NOTICE_MS = 6000;
 
 export interface LifeHub {
   /** The latest frame from the server; null until the first one arrives. */
@@ -18,11 +30,14 @@ export interface LifeHub {
   /** True once connected and initialised from the server. Controls may act only then. */
   ready: boolean;
   status: Status;
-  setStatus(status: Status): void;
+  notice: Notice | null;
+  /** Shows a transient notice; it replaces the previous one and hides after NOTICE_MS. */
+  notify(text: string, variant?: Notice["variant"]): void;
+  dismissNotice(): void;
   /**
    * Invokes a hub method through the generated proxy, applies the frame it returns (if any) and
-   * surfaces hub errors in the status badge. The method name and arguments are checked against
-   * ILifeHub, so a renamed or re-typed server method fails to compile here.
+   * surfaces hub errors as a notice. The method name and arguments are checked against ILifeHub,
+   * so a renamed or re-typed server method fails to compile here.
    */
   call<M extends keyof ILifeHub>(method: M, ...args: Parameters<ILifeHub[M]>): Promise<void>;
 }
@@ -36,13 +51,20 @@ export function useLifeHub(): LifeHub {
   const [frame, setFrame] = useState<Frame | null>(null);
   const [ready, setReady] = useState(false);
   const [status, setStatus] = useState<Status>({ text: "connecting…", variant: "secondary" });
+  const [notice, setNotice] = useState<Notice | null>(null);
   const hubRef = useRef<ILifeHub | null>(null);
   const frameRef = useRef<Frame | null>(null);
+  const noticeKey = useRef(0);
 
   const applyFrame = useCallback((f: Frame) => {
     frameRef.current = f;
     setFrame(f);
   }, []);
+
+  const notify = useCallback((text: string, variant: Notice["variant"] = "danger") => {
+    setNotice({ text, variant, key: ++noticeKey.current });
+  }, []);
+  const dismissNotice = useCallback(() => setNotice(null), []);
 
   const call = useCallback(async <M extends keyof ILifeHub>(method: M, ...args: Parameters<ILifeHub[M]>): Promise<void> => {
     const hub = hubRef.current;
@@ -53,9 +75,9 @@ export function useLifeHub(): LifeHub {
       if (result) applyFrame(result);
     } catch (err) {
       console.error(method, err);
-      setStatus({ text: (err as Error).message.replace(/^.*HubException: /, ""), variant: "danger" });
+      notify((err as Error).message.replace(/^.*HubException: /, ""));
     }
-  }, [applyFrame]);
+  }, [applyFrame, notify]);
 
   useEffect(() => {
     const connection = new HubConnectionBuilder().withUrl("/hubs/life").withAutomaticReconnect().build();
@@ -85,7 +107,7 @@ export function useLifeHub(): LifeHub {
         resumeEdit = false;
         const current = frameRef.current!;
         if (!current.editing) await call("beginEdit");
-        else if (!current.editingByMe) setStatus({ text: "another client took over editing while you were reconnecting", variant: "warning" });
+        else if (!current.editingByMe) notify("Another client took over editing while you were reconnecting.", "warning");
       }
     };
 
@@ -105,7 +127,7 @@ export function useLifeHub(): LifeHub {
       hubRef.current = null;
       void connection.stop();
     };
-  }, [applyFrame, call]);
+  }, [applyFrame, call, notify]);
 
-  return { frame, ready, status, setStatus, call };
+  return { frame, ready, status, notice, notify, dismissNotice, call };
 }

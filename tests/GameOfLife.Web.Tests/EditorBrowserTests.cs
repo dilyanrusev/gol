@@ -3,7 +3,7 @@ using static Microsoft.Playwright.Assertions;
 
 namespace GameOfLife.Web.Tests;
 
-/// <summary>The seed editor page: presets, painting, keyboard, RLE round trip, and seeding the universe.</summary>
+/// <summary>The pattern editor page: presets, painting, keyboard, RLE round trip, and loading the result as the initial state.</summary>
 [Collection(WebCollection.Name)]
 public sealed class EditorBrowserTests(WebAppFixture app) : IAsyncLifetime
 {
@@ -78,10 +78,10 @@ public sealed class EditorBrowserTests(WebAppFixture app) : IAsyncLifetime
         await Expect(page.Locator("#editor-count")).ToHaveTextAsync("5");
         await page.Locator("#Name").FillAsync("My R");
 
-        await page.GetByRole(AriaRole.Button, new() { Name = "Seed the universe" }).ClickAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "Use as initial state" }).ClickAsync();
 
         await Expect(page).ToHaveURLAsync(new System.Text.RegularExpressions.Regex("/$"));
-        await Expect(page.Locator(".alert-success")).ToContainTextAsync("Seeded the universe with 5 cells");
+        await Expect(page.Locator(".alert-success")).ToContainTextAsync("Loaded 5 cells as the initial state");
         await Expect(page.Locator("#status-population")).ToHaveTextAsync("5");
         Assert.Equal(5, app.Loop.Current.Population);
     }

@@ -36,15 +36,11 @@ html, body {
     flex-direction: column;
 }
 
-.viewer-row {
+.viewer-main {
     flex: 1 1 auto;
     min-height: 0;
-}
-
-.viewer-main {
     display: flex;
     flex-direction: column;
-    min-height: 0;
 }
 
 /*
@@ -68,20 +64,159 @@ html, body {
     cursor: grab;
 }
 
-@media (min-width: 992px) {
-    /* A tall sidebar scrolls by itself so the canvas column never forces the page to. */
-    .viewer-sidebar {
-        max-height: 100%;
-        overflow-y: auto;
+.viewer-speed {
+    width: 6rem;
+}
+
+/*
+ * Navigation clusters in the canvas's bottom corners: the pan cross (with Recentre) on the left,
+ * zoom on the right, as phone games and map apps split continuous and discrete controls. Only the
+ * buttons take pointer events, so drags that start next to them still pan. Translucent until the
+ * pointer is over them; larger targets where the pointer is a finger; inset a full rem so they
+ * stay clear of the system's edge-swipe zones.
+ */
+.viewer-nav {
+    --nav-btn: 2rem;
+    position: absolute;
+    bottom: 1rem;
+    z-index: 2;
+    display: grid;
+    gap: 2px;
+    opacity: 0.6;
+    transition: opacity 0.15s;
+    pointer-events: none;
+}
+
+.viewer-nav-pan {
+    left: 1rem;
+    grid-template-columns: repeat(3, var(--nav-btn));
+    grid-template-rows: repeat(3, var(--nav-btn));
+}
+
+.viewer-nav-zoom {
+    right: 1rem;
+    grid-template-columns: var(--nav-btn) 4rem var(--nav-btn);
+    grid-template-rows: var(--nav-btn);
+}
+
+.viewer-nav input {
+    pointer-events: auto;
+    height: var(--nav-btn);
+    background-color: var(--bs-body-bg);
+    -moz-appearance: textfield;
+}
+
+.viewer-nav input::-webkit-outer-spin-button,
+.viewer-nav input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.viewer-nav:hover,
+.viewer-nav:focus-within {
+    opacity: 1;
+}
+
+.viewer-nav .btn {
+    /* Opaque at rest so the canvas does not show through, via Bootstrap's own variable so that the
+       hover, focus and active states keep their contrasting colours (a bg-body utility would not). */
+    --bs-btn-bg: var(--bs-body-bg);
+    pointer-events: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--nav-btn);
+    height: var(--nav-btn);
+    padding: 0;
+    line-height: 1;
+}
+
+@media (pointer: coarse) {
+    .viewer-nav {
+        --nav-btn: 44px; /* WCAG 2.5.8 target size; in px because the root font size shrinks on small screens */
+        opacity: 0.8;
     }
 }
 
-@media (max-width: 991.98px) {
-    /* Stacked layout: a flexible height means nothing, so the canvas gets a sensible fixed one. */
-    .viewer-canvas-wrap {
-        flex: none;
-        height: min(100vw, 70dvh);
+/*
+ * Head-up display: the readouts at the top centre of the canvas. Pointer events pass through the
+ * pill; only the figures, which carry tooltips, take them. Tabular figures and reserved widths keep
+ * the pill from jittering as the generation counter ticks.
+ */
+.viewer-hud {
+    position: absolute;
+    top: 0.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2;
+    max-width: calc(100% - 1rem);
+    pointer-events: none;
+    font-variant-numeric: tabular-nums;
+}
+
+.viewer-hud .viewer-hud-figure {
+    pointer-events: auto;
+}
+
+.viewer-toasts {
+    z-index: 3;
+    max-width: min(350px, calc(100% - 2rem));
+}
+
+/*
+ * Messages that sit on the canvas without taking layout space. They let pointer events through to
+ * the canvas beneath (so the editing caption never blocks the cells under it); only their buttons
+ * take clicks.
+ */
+.viewer-overlay {
+    position: absolute;
+    top: 0.5rem;
+    left: 0.5rem;
+    z-index: 2;
+    max-width: calc(100% - 1rem);
+    pointer-events: none;
+}
+
+.viewer-overlay .btn {
+    pointer-events: auto;
+}
+
+/* Narrow screens: the prompts sit below the head-up display instead of colliding with it. */
+@media (max-width: 767.98px) {
+    .viewer-overlay {
+        top: 3rem;
     }
+}
+
+/* Toolbar groups never break inside; the strip wraps between them on narrow screens. */
+.viewer-toolbar .toolbar-group {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.viewer-toolbar .vr {
+    align-self: stretch;
+    min-height: 1.5rem;
+}
+
+/*
+ * Toolbar buttons hold inline SVG icons. On the text baseline an icon sits visibly above the
+ * button's centre, so the buttons centre their content with flex instead.
+ */
+.viewer-toolbar .btn,
+.viewer-toolbar .input-group > .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    line-height: 1;
+    min-height: calc(1.5em + 0.5rem + 2px); /* the height a text-only btn-sm would have */
+}
+
+.viewer-toolbar .btn > svg {
+    flex: none;
 }
 
 .universe-canvas:active {
@@ -95,15 +230,6 @@ html, body {
 .universe-canvas:focus-visible {
     outline: 2px solid var(--bs-primary);
     outline-offset: 2px;
-}
-
-/* Viewport toolbar: thin strips hugging the canvas; the size inputs stay compact. */
-.viewport-toolbar .viewport-size {
-    width: auto;
-}
-
-.viewport-toolbar .viewport-size input {
-    max-width: 4.5rem;
 }
 
 /* Seed editor: a 100 x 100 matrix of real buttons, so it is clickable and keyboard-navigable. */
