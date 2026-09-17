@@ -523,3 +523,25 @@ Help. A test cycles the modes, checks persistence across pages and reloads, and 
 click that changes the text re-renders the open tooltip at once. The theme test hovers, clicks
 twice and checks the tooltip names the next mode each time. Icon: `circle-half` is the convention
 Bootstrap's own theme switcher uses for "auto"; kept.
+
+### 33. Performance: benchmarks and baseline
+
+> Ok, lets move to performance. Since we create a lot of objects to guarantee immunity, we need to
+> start working on that. What's the best practices to benchmark memory usage, so that we can test
+> if we've made meaningful progress?
+
+> Ok, set up the benchmark project and capture the baseline
+
+Practice: allocations per operation (BenchmarkDotNet MemoryDiagnoser; exact and portable, so also
+assertable as unit-test budgets in CI) versus steady-state process memory (dotnet-counters,
+dotnet-gcdump); Release only; timings never gated.
+
+Result: `benchmarks/GameOfLife.Benchmarks` (engine step and snapshot on gun@1000, acorn@5000 and a
+50k soup; viewport projection at 100 and 500; frame JSON; whole tick with 1/4/16 clients),
+baseline in `benchmarks/results/2026-09-17-baseline.md`, and `AllocationBudgetTests` in Core
+(steady-population stepping allocates nothing; snapshot is 16 B per cell; projection budgets).
+Findings: stepping is already allocation-free; the soup's step alone takes 13 ms, so the engine,
+not the clients, caps the generation rate; per client the costs are projection walking the whole
+population and JSON text. The tick benchmark needed `invocationCount: 8` for stable numbers, and
+the stepping budget excludes growing populations (the gun's sets double their capacity now and
+then).

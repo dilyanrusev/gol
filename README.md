@@ -32,12 +32,26 @@ Tests: `dotnet test`. The Web tests start the real server on Kestrel at a random
 with the .NET SignalR client and with Playwright. They use the Chromium build bundled with the
 Playwright package, which the test fixture downloads on first run (about 150 MB, cached per user).
 
+## Benchmarks
+
+```
+dotnet run -c Release --project benchmarks/GameOfLife.Benchmarks -- --filter '*'
+```
+
+BenchmarkDotNet with the memory diagnoser: one generation and one snapshot copy on three worlds
+(the glider gun at generation 1000, the acorn at 5000, a 50 000-cell soup), viewport projection at
+100 and 500 cells across, a frame's JSON cost, and a whole server tick with 1, 4 and 16 clients.
+Committed baselines live in `benchmarks/results/`; compare a change against the latest one.
+Allocation counts are exact and portable, timings are not, so the Core tests also carry allocation
+budgets that fail the build when a hot path starts allocating more.
+
 ## Layout
 
 | Path | What |
 | --- | --- |
 | `src/GameOfLife.Core` | Engine (`Universe`), RLE parser/writer, `Viewport`, `SimulationLoop`. No ASP.NET dependency. |
 | `src/GameOfLife.Web` | Razor Pages shell, SignalR hub, hosted service, React client in `Scripts/` (`viewer/` and `editor/` are the two page bundles, `site/` the shared Bootstrap shell; `Scripts/generated/` is produced by the build from `ILifeHub`, `ILifeClient` and `Frame`; commit it, never edit it). All client dependencies, Bootstrap and SignalR included, come from `package.json`. |
+| `benchmarks/GameOfLife.Benchmarks` | BenchmarkDotNet: engine step and snapshot, viewport projection, frame JSON, whole server tick. Baselines in `benchmarks/results/`. |
 | `tests/GameOfLife.Core.Tests` | xUnit: RLE round trips, engine vs. known patterns, viewport seam handling, loop commands. |
 | `tests/GameOfLife.Web.Tests` | xUnit integration tests: hub contract over the .NET SignalR client; page behaviour in headless Chromium via Playwright (initial state on connect, controls shared across browsers, viewports per browser, exclusive editing with its banner and countdown). |
 | `patterns/` | Example `.rle` files (Gosper glider gun). |
