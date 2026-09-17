@@ -545,3 +545,28 @@ not the clients, caps the generation rate; per client the costs are projection w
 population and JSON text. The tick benchmark needed `invocationCount: 8` for stable numbers, and
 the stepping budget excludes growing populations (the gun's sets double their capacity now and
 then).
+
+### 34. Optimisation pass: source generation, per-client buffers, packed cells
+
+> Lets start with SourceGenerationContext, since the change is small. Then, let's make sure clients
+> reuse the same backing array per client. Finally, let's change the frame's transport format for
+> Cells. In between each change, say if we have improvemnts, and also, do so in the end.
+
+(Preceded by three discussions: ArrayPool versus an owned growable buffer, a fixed 500 × 500 buffer
+versus growing by visible count, and JSON source generation versus the payload format.)
+
+1. `WireJsonContext` registered on SignalR's JSON protocol. Lesson: touching the resolver chain
+   drops the implicit reflection resolver, which broke binding of `long` hub arguments until it was
+   added back explicitly; a test now checks both. Gain: ~4 % serialisation time, same bytes.
+2. Each connection owns a growable projection buffer reused by the broadcast; `Viewport.Project`
+   gained a span-based, allocation-free overload (the enumerable overload allocated an enumerator).
+   Frames from hub methods keep their own arrays. Gain: projection allocates nothing; the 16-client
+   acorn tick fell from 62 KB to 27 KB and from 750 to 446 μs.
+3. `CellsCodec`: cells travel as a tagged base64 string, delta-coded indices when sparse, a bitmap
+   when at least one cell in twelve is alive; the client decodes to indices (`cells.ts`). The
+   encoder writes into a per-connection scratch buffer, so only the string is allocated.
+   Gain: a 100 × 100 frame of the soup is 1.8 KB instead of 10 KB and serialises in 0.3 μs instead
+   of 10; a dense 500 × 500 frame is 41 KB instead of 321 KB (0.11 of the time). Whole tick with 16
+   clients on the acorn: 750 → 327 μs and 62 → 25 KB. Tables in
+   `benchmarks/results/2026-09-17-optimisations.md`. What remains is the engine: the snapshot copy
+   and the step itself.

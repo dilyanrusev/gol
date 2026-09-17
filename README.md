@@ -40,7 +40,9 @@ dotnet run -c Release --project benchmarks/GameOfLife.Benchmarks -- --filter '*'
 
 BenchmarkDotNet with the memory diagnoser: one generation and one snapshot copy on three worlds
 (the glider gun at generation 1000, the acorn at 5000, a 50 000-cell soup), viewport projection at
-100 and 500 cells across, a frame's JSON cost, and a whole server tick with 1, 4 and 16 clients.
+100 and 500 cells across (fresh array versus a client's reused buffer), a frame's JSON cost (index
+list through reflection, through source generation, and the packed string), the cell codec, and a
+whole server tick with 1, 4 and 16 clients.
 Committed baselines live in `benchmarks/results/`; compare a change against the latest one.
 Allocation counts are exact and portable, timings are not, so the Core tests also carry allocation
 budgets that fail the build when a hot path starts allocating more.
@@ -91,7 +93,9 @@ budgets that fail the build when a hot path starts allocating more.
   starts centred on the seed pattern and only sends relative changes (`Pan(dx, dy)`, `Resize`,
   `Recentre`). Deltas outside JavaScript's safe-integer range are rejected; grid size is clamped to
   5–500 cells per side. Each tick the server sends every client only the cells inside its viewport,
-  packed as `y * width + x` indices.
+  packed by `CellsCodec` into a short string: delta-coded indices for sparse views, a bitmap for
+  dense ones, chosen per frame. Each connection keeps its projection and encoding buffers, so a
+  broadcast allocates only the string; frames returned from hub methods allocate their own.
 - **RLE everywhere.** Uploads, the pattern editor and the "save" download all go through the same
   parser/writer. Saved files carry a `#C origin x y` comment so they reload in place; files without
   it are centred on the universe.

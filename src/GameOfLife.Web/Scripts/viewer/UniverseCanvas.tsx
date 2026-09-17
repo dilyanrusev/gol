@@ -4,6 +4,8 @@ import { attachGestures } from "./gestures";
 
 export interface UniverseCanvasProps {
   frame: Frame;
+  /** The frame's cells, decoded to packed indices. */
+  cells: number[];
   /** Shows the crosshair cursor while this client is editing. */
   editing: boolean;
   onPan(dx: number, dy: number): void;
@@ -26,9 +28,10 @@ interface Geometry {
  * The viewport, drawn on a canvas. Drawing is imperative by nature and happens in an effect; the
  * gesture listeners are attached once and read the latest frame and handlers through refs.
  */
-export function UniverseCanvas({ frame, editing, onPan, onZoom, onRecentre, onCellTap, onSizeChange }: UniverseCanvasProps) {
+export function UniverseCanvas({ frame, cells, editing, onPan, onZoom, onRecentre, onCellTap, onSizeChange }: UniverseCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const frameRef = useRef(frame);
+  const cellsRef = useRef(cells);
   const handlersRef = useRef({ onPan, onZoom, onRecentre, onCellTap, onSizeChange });
   const geometry = useRef<Geometry>({ cellPx: 1, ox: 0, oy: 0 });
   const lastSize = useRef({ width: 0, height: 0 });
@@ -68,7 +71,7 @@ export function UniverseCanvas({ frame, editing, onPan, onZoom, onRecentre, onCe
 
     ctx.fillStyle = style.getPropertyValue("--bs-primary") || "#0d6efd";
     const inset = cellPx >= 6 ? 1 : 0;
-    for (const i of f.cells) {
+    for (const i of cellsRef.current) {
       const x = i % f.width;
       const y = (i - x) / f.width;
       ctx.fillRect(ox + x * cellPx + inset, oy + y * cellPx + inset, cellPx - inset, cellPx - inset);
@@ -91,8 +94,9 @@ export function UniverseCanvas({ frame, editing, onPan, onZoom, onRecentre, onCe
   // Redraw whenever a new frame arrives.
   useEffect(() => {
     frameRef.current = frame;
+    cellsRef.current = cells;
     draw();
-  }, [frame, draw]);
+  }, [frame, cells, draw]);
 
   // Redraw on resize and theme changes; attach the gestures once. The colours come from Bootstrap's
   // CSS variables, which change with the theme attribute on the root element, not with the OS setting.

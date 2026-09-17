@@ -1,4 +1,5 @@
 using System.Threading.Channels;
+using GameOfLife.Core;
 using GameOfLife.Web.Simulation;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
@@ -41,6 +42,8 @@ public sealed class EditingHubTests(WebAppFixture app) : IAsyncLifetime
     }
 
     private static Task<Frame> Invoke(HubConnection c, string method, params object[] args) => c.InvokeCoreAsync<Frame>(method, args);
+
+    private static int[] Cells(Frame frame) => CellsCodec.Decode(frame.Cells, frame.Width, frame.Height);
 
     [Fact]
     public async Task Only_one_client_can_edit_and_every_frame_says_who()
@@ -97,15 +100,15 @@ public sealed class EditingHubTests(WebAppFixture app) : IAsyncLifetime
         var (client, _) = await ConnectAsync();
         // A 10 x 10 viewport centred on the blinker puts its middle cell at (5, 5) and the row at y = 5.
         var before = await Invoke(client, nameof(Hubs.ILifeHub.Resize), 10, 10);
-        Assert.Equal(new[] { 5 * 10 + 4, 5 * 10 + 5, 5 * 10 + 6 }, before.Cells);
+        Assert.Equal(new[] { 5 * 10 + 4, 5 * 10 + 5, 5 * 10 + 6 }, Cells(before));
         await Invoke(client, nameof(Hubs.ILifeHub.BeginEdit));
 
         var middleOff = await Invoke(client, nameof(Hubs.ILifeHub.ToggleCell), 5, 5);
-        Assert.Equal(new[] { 54, 56 }, middleOff.Cells);
+        Assert.Equal(new[] { 54, 56 }, Cells(middleOff));
         Assert.Equal(2, middleOff.Population);
 
         var cornerOn = await Invoke(client, nameof(Hubs.ILifeHub.ToggleCell), 0, 0);
-        Assert.Equal(new[] { 0, 54, 56 }, cornerOn.Cells);
+        Assert.Equal(new[] { 0, 54, 56 }, Cells(cornerOn));
         Assert.Equal(0UL, cornerOn.Generation);
     }
 

@@ -54,7 +54,7 @@ public sealed class HubTests(WebAppFixture app) : IAsyncLifetime
         Assert.Equal(3, frame.Population);
         Assert.Equal(Viewport.DefaultSize, frame.Width);
         Assert.Equal(Viewport.DefaultSize, frame.Height);
-        Assert.Equal(3, frame.Cells.Length);
+        Assert.Equal(3, CellsCodec.Decode(frame.Cells, frame.Width, frame.Height).Length);
     }
 
     [Fact]
@@ -65,9 +65,7 @@ public sealed class HubTests(WebAppFixture app) : IAsyncLifetime
 
         var refreshed = await connection.InvokeAsync<Frame>(nameof(Hubs.ILifeHub.Refresh));
 
-        // Records compare arrays by reference, so compare the cells separately.
-        Assert.Equal(pushed, refreshed with { Cells = pushed.Cells });
-        Assert.Equal(pushed.Cells, refreshed.Cells);
+        Assert.Equal(pushed, refreshed);
     }
 
     [Fact]

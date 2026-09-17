@@ -53,14 +53,31 @@ public readonly record struct Viewport(Cell Origin, int Width, int Height)
         return false;
     }
 
-    /// <summary>Visible cells as packed indices (y * Width + x), sorted ascending.</summary>
+    /// <summary>Visible cells as packed indices (y * Width + x), sorted ascending, in a new array.</summary>
     public int[] Project(IEnumerable<Cell> cells)
     {
-        var result = new List<int>();
+        var buffer = new int[256];
+        var count = cells is Cell[] array ? Project(array, ref buffer) : Project(cells.ToArray(), ref buffer);
+        return buffer.AsSpan(0, count).ToArray();
+    }
+
+    /// <summary>
+    /// Visible cells as packed indices (y * Width + x), sorted ascending, written into
+    /// <paramref name="buffer"/>, which is grown (doubled) when it is too small and otherwise reused.
+    /// Returns how many indices were written. This is the allocation-free path for a client that
+    /// keeps its buffer across generations (a span, not an enumerable: enumerating an array through
+    /// its interface allocates the enumerator).
+    /// </summary>
+    public int Project(ReadOnlySpan<Cell> cells, ref int[] buffer)
+    {
+        var count = 0;
         foreach (var c in cells)
-            if (TryProject(c, out var x, out var y))
-                result.Add(y * Width + x);
-        result.Sort();
-        return result.ToArray();
+        {
+            if (!TryProject(c, out var x, out var y)) continue;
+            if (count == buffer.Length) Array.Resize(ref buffer, buffer.Length * 2);
+            buffer[count++] = y * Width + x;
+        }
+        Array.Sort(buffer, 0, count);
+        return count;
     }
 }

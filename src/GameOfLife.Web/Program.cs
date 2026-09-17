@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization.Metadata;
 using GameOfLife.Core;
 using GameOfLife.Web.Hubs;
 using GameOfLife.Web.Simulation;
@@ -5,7 +6,15 @@ using GameOfLife.Web.Simulation;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddRazorPages();
-builder.Services.AddSignalR();
+// Frames are serialised through compile-time metadata (see WireJsonContext). Touching the resolver
+// chain replaces the implicit reflection resolver, so it is added back explicitly for everything
+// else (hub method arguments such as the long deltas of Pan).
+builder.Services.AddSignalR().AddJsonProtocol(options =>
+{
+    var chain = options.PayloadSerializerOptions.TypeInfoResolverChain;
+    chain.Insert(0, WireJsonContext.Default);
+    if (!chain.OfType<DefaultJsonTypeInfoResolver>().Any()) chain.Add(new DefaultJsonTypeInfoResolver());
+});
 
 builder.Services.AddSingleton<ClientViewports>();
 // The loop is the single writer of the universe. Its observer fans each snapshot out to the

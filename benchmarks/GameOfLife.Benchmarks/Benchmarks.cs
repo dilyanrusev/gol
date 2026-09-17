@@ -48,19 +48,27 @@ public class ViewportBenchmarks
 
     private Cell[] _soup = [];
     private Viewport _viewport;
+    private int[] _buffer = new int[256];
 
     [GlobalSetup]
     public void Setup()
     {
         _soup = Cells("soup50k");
         _viewport = CentredViewport(Size);
+        _viewport.Project(_soup, ref _buffer); // grow the reused buffer once, as a client's first frame would
     }
 
-    [Benchmark]
+    [Benchmark(Baseline = true)]
     public int[] Project() => _viewport.Project(_soup);
+
+    [Benchmark]
+    public int ProjectIntoReusedBuffer() => _viewport.Project(_soup, ref _buffer);
 }
 
-/// <summary>What one frame costs on the wire: JSON as SignalR sends it, for a sparse and a dense view.</summary>
+/// <summary>
+/// What one frame costs on the wire for a sparse and a dense view: the original index list through
+/// reflection JSON, the same through source generation, and the packed string (source generation).
+/// </summary>
 [MemoryDiagnoser]
 [SimpleJob(warmupCount: 2, iterationCount: 8)]
 [MarkdownExporterAttribute.GitHub]
@@ -69,17 +77,51 @@ public class FrameBenchmarks
     [Params(100, 500)]
     public int Size { get; set; }
 
-    private WireFrame _frame = null!;
+    private IndexFrame _indexFrame = null!;
+    private WireFrame _packedFrame = null!;
 
     [GlobalSetup]
     public void Setup()
     {
         var cells = CentredViewport(Size).Project(Cells("soup50k"));
-        _frame = new WireFrame(1000, 50_000, true, 10, Size, Size, cells, false, false, 0, 300_000);
+        _indexFrame = new IndexFrame(1000, 50_000, true, 10, Size, Size, cells, false, false, 0, 300_000);
+        _packedFrame = new WireFrame(1000, 50_000, true, 10, Size, Size, CellsCodec.Encode(cells, Size, Size), false, false, 0, 300_000);
+    }
+
+    [Benchmark(Baseline = true)]
+    public byte[] SerializeJson() => JsonSerializer.SerializeToUtf8Bytes(_indexFrame, WireJson);
+
+    [Benchmark]
+    public byte[] SerializeJsonSourceGen() => JsonSerializer.SerializeToUtf8Bytes(_indexFrame, BenchJsonContext.Default.IndexFrame);
+
+    [Benchmark]
+    public byte[] SerializeJsonPacked() => JsonSerializer.SerializeToUtf8Bytes(_packedFrame, BenchJsonContext.Default.WireFrame);
+}
+
+/// <summary>Packing the cells: the encoder with a kept scratch buffer, so only the string is allocated.</summary>
+[MemoryDiagnoser]
+[SimpleJob(warmupCount: 2, iterationCount: 8)]
+[MarkdownExporterAttribute.GitHub]
+public class CodecBenchmarks
+{
+    [Params("acorn@5000/100", "soup50k/100", "soup50k/500")]
+    public string Case { get; set; } = "";
+
+    private int[] _indices = [];
+    private int _size;
+    private byte[] _scratch = [];
+
+    [GlobalSetup]
+    public void Setup()
+    {
+        var parts = Case.Split('/');
+        _size = int.Parse(parts[1]);
+        _indices = CentredViewport(_size).Project(Cells(parts[0]));
+        CellsCodec.Encode(_indices, _size, _size, ref _scratch);
     }
 
     [Benchmark]
-    public byte[] SerializeJson() => JsonSerializer.SerializeToUtf8Bytes(_frame, WireJson);
+    public string Encode() => CellsCodec.Encode(_indices, _size, _size, ref _scratch);
 }
 
 /// <summary>
@@ -103,13 +145,17 @@ public class TickBenchmarks
     private Cell[] _cells = [];
     private readonly Universe _universe = new();
     private Viewport[] _viewports = [];
+    private int[][] _buffers = [];
+    private byte[][] _scratch = [];
 
     [GlobalSetup]
     public void Setup()
     {
         _cells = Cells(World);
-        // Clients look at slightly different places, as real ones do.
+        // Clients look at slightly different places, as real ones do, and each keeps its projection buffer.
         _viewports = Enumerable.Range(0, Clients).Select(i => CentredViewport(100).Pan(i * 7, i * 3)).ToArray();
+        _buffers = _viewports.Select(_ => new int[256]).ToArray();
+        _scratch = _viewports.Select(_ => Array.Empty<byte>()).ToArray();
     }
 
     [IterationSetup]
@@ -121,11 +167,14 @@ public class TickBenchmarks
         _universe.Step();
         var snapshot = new UniverseSnapshot(_universe.Generation, _universe.Snapshot(), true, 10, Cell.Centre);
         var bytes = 0;
-        foreach (var viewport in _viewports)
+        for (var i = 0; i < _viewports.Length; i++)
         {
+            var viewport = _viewports[i];
+            var count = viewport.Project(snapshot.Cells, ref _buffers[i]);
+            var cells = CellsCodec.Encode(_buffers[i].AsSpan(0, count), viewport.Width, viewport.Height, ref _scratch[i]);
             var frame = new WireFrame(snapshot.Generation, snapshot.Population, snapshot.Running, snapshot.GenerationsPerSecond,
-                viewport.Width, viewport.Height, viewport.Project(snapshot.Cells), false, false, 0, 300_000);
-            bytes += JsonSerializer.SerializeToUtf8Bytes(frame, WireJson).Length;
+                viewport.Width, viewport.Height, cells, false, false, 0, 300_000);
+            bytes += JsonSerializer.SerializeToUtf8Bytes(frame, BenchJsonContext.Default.WireFrame).Length;
         }
         return bytes;
     }

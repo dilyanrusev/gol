@@ -9,31 +9,46 @@ namespace GameOfLife.Web.Simulation;
 /// Per-connection viewports. The absolute position lives only here; clients ask for relative changes
 /// and receive <see cref="Frame"/>s projected through their own viewport.
 /// </summary>
+/// <remarks>
+/// Each connection also owns a projection buffer and an encoding scratch buffer that the broadcast
+/// reuses generation after generation: they grow to the largest frame the client has had and are
+/// then never allocated again, and they go away with the connection. Only the broadcast may use it: the loop
+/// awaits every send before publishing the next generation, so the previous frame has been
+/// serialised by the time the buffer is overwritten. Frames returned from hub methods are
+/// serialised after the method has returned, with no way to know when, so they get their own arrays.
+/// </remarks>
 public sealed class ClientViewports(SimulationLoop loop, IHubContext<LifeHub, ILifeClient> hub, ILogger<ClientViewports> logger)
 {
-    private readonly ConcurrentDictionary<string, Viewport> _viewports = new();
+    private sealed class Client(Viewport viewport)
+    {
+        public Viewport Viewport = viewport;
+        public int[] Buffer = new int[256];
+        public byte[] Scratch = [];
+    }
 
-    public int Count => _viewports.Count;
+    private readonly ConcurrentDictionary<string, Client> _clients = new();
+
+    public int Count => _clients.Count;
 
     public Viewport Register(string connectionId)
     {
         var viewport = Viewport.CentredOn(loop.Current.SeedCentre);
-        _viewports[connectionId] = viewport;
+        _clients[connectionId] = new Client(viewport);
         return viewport;
     }
 
-    public void Remove(string connectionId) => _viewports.TryRemove(connectionId, out _);
+    public void Remove(string connectionId) => _clients.TryRemove(connectionId, out _);
 
     /// <summary>The connection's viewport, or a default one centred on the seed if it has none yet.</summary>
     public Viewport Get(string connectionId) =>
-        _viewports.GetValueOrDefault(connectionId, Viewport.CentredOn(loop.Current.SeedCentre));
+        _clients.TryGetValue(connectionId, out var client) ? client.Viewport : Viewport.CentredOn(loop.Current.SeedCentre);
 
     /// <summary>Applies a change to the connection's viewport and returns the new value.</summary>
     public Viewport Update(string connectionId, Func<Viewport, Viewport> change)
     {
-        var updated = change(Get(connectionId));
-        _viewports[connectionId] = updated;
-        return updated;
+        var client = _clients.GetOrAdd(connectionId, _ => new Client(Viewport.CentredOn(loop.Current.SeedCentre)));
+        client.Viewport = change(client.Viewport);
+        return client.Viewport;
     }
 
     public Viewport Recentre(string connectionId) =>
@@ -41,7 +56,10 @@ public sealed class ClientViewports(SimulationLoop loop, IHubContext<LifeHub, IL
 
     public Frame BuildFrame(string connectionId, Viewport viewport) => BuildFrame(connectionId, viewport, loop.Current);
 
-    public Frame BuildFrame(string connectionId, Viewport viewport, UniverseSnapshot snapshot)
+    public Frame BuildFrame(string connectionId, Viewport viewport, UniverseSnapshot snapshot) =>
+        BuildFrame(connectionId, viewport, snapshot, CellsCodec.Encode(viewport.Project(snapshot.Cells), viewport.Width, viewport.Height));
+
+    private Frame BuildFrame(string connectionId, Viewport viewport, UniverseSnapshot snapshot, string cells)
     {
         var edit = snapshot.Edit;
         return new Frame(
@@ -51,7 +69,7 @@ public sealed class ClientViewports(SimulationLoop loop, IHubContext<LifeHub, IL
             snapshot.GenerationsPerSecond,
             viewport.Width,
             viewport.Height,
-            viewport.Project(snapshot.Cells),
+            cells,
             Editing: edit is not null,
             EditingByMe: edit?.Owner == connectionId,
             EditRemainingMs: edit is null ? 0 : ToMilliseconds(edit.Remaining),
@@ -62,12 +80,15 @@ public sealed class ClientViewports(SimulationLoop loop, IHubContext<LifeHub, IL
 
     public async Task BroadcastAsync(UniverseSnapshot snapshot, CancellationToken cancellationToken)
     {
-        if (_viewports.IsEmpty) return;
+        if (_clients.IsEmpty) return;
 
-        var sends = new List<Task>(_viewports.Count);
-        foreach (var (connectionId, viewport) in _viewports)
+        var sends = new List<Task>(_clients.Count);
+        foreach (var (connectionId, client) in _clients)
         {
-            var frame = BuildFrame(connectionId, viewport, snapshot);
+            var viewport = client.Viewport;
+            var count = viewport.Project(snapshot.Cells, ref client.Buffer);
+            var cells = CellsCodec.Encode(client.Buffer.AsSpan(0, count), viewport.Width, viewport.Height, ref client.Scratch);
+            var frame = BuildFrame(connectionId, viewport, snapshot, cells);
             sends.Add(hub.Clients.Client(connectionId).ReceiveFrame(frame, cancellationToken));
         }
 

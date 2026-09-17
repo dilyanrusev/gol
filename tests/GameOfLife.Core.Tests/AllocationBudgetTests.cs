@@ -80,6 +80,22 @@ public class AllocationBudgetTests
     }
 
     [Theory]
+    [InlineData(100)]
+    [InlineData(500)]
+    public void Projecting_into_a_reused_buffer_allocates_nothing(int size)
+    {
+        var soup = Soup(50_000, 500, 12345);
+        var viewport = Viewport.CentredOn(Cell.Centre, size, size);
+        var buffer = new int[256];
+        var count = viewport.Project(soup, ref buffer); // grows the buffer once
+        Assert.True(count > 0);
+
+        var bytes = Allocated(() => viewport.Project(soup, ref buffer));
+
+        Assert.True(bytes == 0, $"projecting 50k cells through {size} x {size} into a warm buffer allocated {bytes} bytes");
+    }
+
+    [Theory]
     [InlineData(100, 32_000)]  // measured 24.1 KB
     [InlineData(500, 760_000)] // measured 707.8 KB
     public void Projecting_the_soup_through_a_viewport_stays_within_budget(int size, long budget)

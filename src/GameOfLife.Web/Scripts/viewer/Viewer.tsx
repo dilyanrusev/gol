@@ -7,6 +7,7 @@ import { Download, QuestionCircle, Upload } from "react-bootstrap-icons";
 import type { Frame } from "../generated/GameOfLife.Web.Simulation";
 import { useStoredFlag } from "../shared/useStoredFlag";
 import { CanvasHud } from "./CanvasHud";
+import { decodeCells } from "./cells";
 import { CanvasOverlay } from "./CanvasOverlay";
 import { EditBanner } from "./EditBanner";
 import { GESTURE_HINT_KEY, GestureHint } from "./GestureHint";
@@ -56,11 +57,11 @@ function usePanQueue(hub: LifeHub) {
 }
 
 /** Bounding box of the visible cells, in viewport cells. */
-function visibleBounds(frame: Frame) {
+function visibleBounds(cells: number[], width: number) {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const i of frame.cells) {
-    const x = i % frame.width;
-    const y = (i - x) / frame.width;
+  for (const i of cells) {
+    const x = i % width;
+    const y = (i - x) / width;
     if (x < minX) minX = x;
     if (x > maxX) maxX = x;
     if (y < minY) minY = y;
@@ -82,7 +83,7 @@ export function Viewer() {
   // Until the server has spoken the canvas shows an empty default-sized grid; nothing trusts it as state.
   const view: Frame = frame ?? {
     generation: 0, population: 0, running: false, generationsPerSecond: config.currentSpeed,
-    width: config.defaultGridSize, height: config.defaultGridSize, cells: [],
+    width: config.defaultGridSize, height: config.defaultGridSize, cells: "I",
     editing: false, editingByMe: false, editRemainingMs: 0, editTimeoutMs: 0,
   };
 
@@ -178,7 +179,9 @@ export function Viewer() {
   );
 
   // What an empty-looking canvas cannot say for itself.
-  const bounds = useMemo(() => (frame && frame.cells.length > 0 ? visibleBounds(frame) : null), [frame]);
+  // The wire carries the cells packed; everything on the page works on decoded indices.
+  const cells = useMemo(() => (frame ? decodeCells(frame.cells, frame.width, frame.height) : []), [frame]);
+  const bounds = useMemo(() => (frame && cells.length > 0 ? visibleBounds(cells, frame.width) : null), [frame, cells]);
   const tiny = bounds !== null && frame !== null
     && bounds.spanX <= frame.width * TINY_PATTERN_SHARE && bounds.spanY <= frame.height * TINY_PATTERN_SHARE
     && Math.min(frame.width, frame.height) > config.minGridSize * 2;
@@ -210,7 +213,7 @@ export function Viewer() {
           <button type="button" className="btn btn-sm btn-outline-primary" id="btn-empty-edit" disabled={editReason !== null} onClick={() => void call("beginEdit")}>Draw cells</button>
         </CanvasOverlay>
       );
-    } else if (frame.population > 0 && frame.cells.length === 0) {
+    } else if (frame.population > 0 && cells.length === 0) {
       overlay = (
         <CanvasOverlay id="canvas-offscreen">
           <span>The pattern is outside your view.</span>
@@ -236,7 +239,7 @@ export function Viewer() {
           {trailingTools}
         </ToolbarStrip>
         <div className="viewer-canvas-wrap">
-          <UniverseCanvas frame={view} editing={editingByMe} onPan={pan} onZoom={zoom} onRecentre={recentre} onCellTap={tapCell} onSizeChange={onCanvasSize} />
+          <UniverseCanvas frame={view} cells={cells} editing={editingByMe} onPan={pan} onZoom={zoom} onRecentre={recentre} onCellTap={tapCell} onSizeChange={onCanvasSize} />
           <CanvasHud status={status} frame={ready ? frame : null} />
           {overlay}
           <NavigationPad ready={ready} stepX={stepX} stepY={stepY} across={view.width} minAcross={config.minGridSize} maxAcross={config.maxGridSize}
