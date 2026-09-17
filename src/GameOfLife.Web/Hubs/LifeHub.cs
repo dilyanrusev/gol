@@ -8,14 +8,14 @@ namespace GameOfLife.Web.Hubs;
 /// The client's only channel to the simulation. Viewport methods return the client's new frame
 /// directly; simulation controls take effect through the loop's broadcast.
 /// </summary>
-public sealed class LifeHub(SimulationLoop loop, ClientViewports viewports) : Hub
+public sealed class LifeHub(SimulationLoop loop, ClientViewports viewports) : Hub<ILifeClient>
 {
     public const string Path = "/hubs/life";
 
     public override async Task OnConnectedAsync()
     {
         var viewport = viewports.Register(Context.ConnectionId);
-        await Clients.Caller.SendAsync(ClientViewports.FrameMethod, viewports.BuildFrame(viewport));
+        await Clients.Caller.ReceiveFrame(viewports.BuildFrame(viewport));
         await base.OnConnectedAsync();
     }
 

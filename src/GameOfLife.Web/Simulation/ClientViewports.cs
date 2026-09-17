@@ -9,10 +9,8 @@ namespace GameOfLife.Web.Simulation;
 /// Per-connection viewports. The absolute position lives only here; clients ask for relative changes
 /// and receive <see cref="Frame"/>s projected through their own viewport.
 /// </summary>
-public sealed class ClientViewports(SimulationLoop loop, IHubContext<LifeHub> hub, ILogger<ClientViewports> logger)
+public sealed class ClientViewports(SimulationLoop loop, IHubContext<LifeHub, ILifeClient> hub, ILogger<ClientViewports> logger)
 {
-    public const string FrameMethod = "frame";
-
     private readonly ConcurrentDictionary<string, Viewport> _viewports = new();
 
     public int Count => _viewports.Count;
@@ -57,7 +55,7 @@ public sealed class ClientViewports(SimulationLoop loop, IHubContext<LifeHub> hu
         foreach (var (connectionId, viewport) in _viewports)
         {
             var frame = BuildFrame(viewport, snapshot);
-            sends.Add(hub.Clients.Client(connectionId).SendAsync(FrameMethod, frame, cancellationToken));
+            sends.Add(hub.Clients.Client(connectionId).ReceiveFrame(frame, cancellationToken));
         }
 
         try
