@@ -286,7 +286,7 @@ public sealed class SimulationLoop
     }
 
     private UniverseSnapshot BuildSnapshot() =>
-        new(_universe.Generation, _universe.Snapshot(), _running, _generationsPerSecond, _seedCentre, _edit);
+        new(_universe.Generation, _universe.SnapshotIndexed(), _running, _generationsPerSecond, _seedCentre, _edit);
 
     private Task PostAsync(Action action) => PostAsync<object?>(() => { action(); return null; });
 

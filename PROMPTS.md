@@ -570,3 +570,46 @@ versus growing by visible count, and JSON source generation versus the payload f
    clients on the acorn: 750 → 327 μs and 62 → 25 KB. Tables in
    `benchmarks/results/2026-09-17-optimisations.md`. What remains is the engine: the snapshot copy
    and the step itself.
+
+### 35. Spatial index: each client projects only its own chunks
+
+> Lets talk about each client walking through the whole universe per tick
+
+> go, build the index pass
+
+Discussed first: with N clients the broadcast walked the whole population N times per generation;
+a chunk index built once per snapshot makes each projection proportional to the viewport instead.
+The alternative, storing the population in chunks inside the engine, was set aside as a larger
+change.
+
+Built: `SpatialIndex` (64 × 64 chunks, keys are coordinates shifted right by six and masked round
+the torus), `Universe.SnapshotIndexed()` producing the cell array grouped by chunk with a chunk
+table (one dictionary lookup per cell, bookkeeping arrays reused), `UniverseSnapshot` carrying the
+index, the broadcast and hub frames projecting through it. Tests: the index holds every cell
+grouped once, indexed projection equals the flat walk for random viewports and across the torus
+seam and chunk edges, allocation budgets for the indexed snapshot and for projecting through it
+into a reused buffer (zero bytes).
+
+Measurement lesson: the benchmarks with an `[IterationSetup]` ran so few invocations that the
+engine's code was timed at tier 0 while framework code ran optimised, which first made the index
+look ten times worse than it is. Snapshots got their own class without a reload, and the step and
+tick benchmarks now run with tiered compilation off, with the flat tick as a side-by-side baseline.
+
+Result (`benchmarks/results/2026-09-17-spatial-index.md`): a 100 × 100 projection of the 50k soup
+takes 31 μs instead of 172 (0.17×), allocation-free, and no longer depends on the population; the
+chunked snapshot costs about 540 μs more than the flat copy on the soup (5–6× the copy), paid once
+per generation. The whole tick is 0.94× with 16 clients on the soup, 0.96× with 4, 1.05× with 1,
+and within noise on the acorn. The step (9.5 ms on the soup) still dominates; the rebuild and the
+sort of dense views are the next targets, and both point at a chunked engine.
+
+### 36. One index builder
+
+> Can you explain why SpacialIndex.Build is not reused in Universe.ShapshotIndexed through SimulationLoop.BuildSnapshot?
+
+> Ok, do the middle option
+
+`Build` took a span and allocated its own dictionaries; the engine grouped its hash set directly
+with retained scratch. Fine as a split, except that the two had drifted into different algorithms.
+Now one `SpatialIndex.Builder` (begin, add, finish) holds the scratch and the counting sort; the
+engine keeps an instance and feeds it the live set, `Build` creates one for a span. The
+allocation-free path and the numbers are unchanged.

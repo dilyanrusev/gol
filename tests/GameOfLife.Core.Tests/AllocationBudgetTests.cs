@@ -27,11 +27,22 @@ public class AllocationBudgetTests
         return universe;
     }
 
+    /// <summary>
+    /// Bytes the action allocates in steady state: the minimum over a few runs. The runtime now
+    /// and then charges a few kilobytes of its own work (tiering, instrumentation) to a thread,
+    /// which made single measurements fail one run in three; an allocation the code itself makes
+    /// shows up in every run and so in the minimum.
+    /// </summary>
     private static long Allocated(Action action)
     {
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        action();
-        return GC.GetAllocatedBytesForCurrentThread() - before;
+        var least = long.MaxValue;
+        for (var run = 0; run < 3; run++)
+        {
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            action();
+            least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+        return least;
     }
 
     /// <summary>All benchmark worlds, including the gun, whose population keeps growing.</summary>
@@ -77,6 +88,32 @@ public class AllocationBudgetTests
         var bytes = Allocated(() => universe.Snapshot());
         var array = 16L * universe.Population + 64; // 16 bytes per Cell plus the array header, with slack
         Assert.True(bytes <= array, $"{world}: snapshot allocated {bytes} bytes for {universe.Population} cells; budget {array}");
+    }
+
+    [Theory]
+    [MemberData(nameof(Worlds))]
+    public void An_indexed_snapshot_adds_only_its_chunk_table(string world, Universe universe)
+    {
+        var warm = universe.SnapshotIndexed(); // the reusable chunk bookkeeping grows once
+        var bytes = Allocated(() => universe.SnapshotIndexed());
+        // The grouped cell array plus a dictionary entry per chunk (about 40 bytes each, with slack).
+        var budget = 16L * universe.Population + 64 + 64L * warm.ChunkCount + 512;
+        Assert.True(bytes <= budget, $"{world}: indexed snapshot allocated {bytes} bytes for {universe.Population} cells in {warm.ChunkCount} chunks; budget {budget}");
+    }
+
+    [Theory]
+    [InlineData(100)]
+    [InlineData(500)]
+    public void Projecting_through_the_index_into_a_reused_buffer_allocates_nothing(int size)
+    {
+        var index = SpatialIndex.Build(Soup(50_000, 500, 12345));
+        var viewport = Viewport.CentredOn(Cell.Centre, size, size);
+        var buffer = new int[256];
+        index.Project(viewport, ref buffer); // grows the buffer once
+
+        var bytes = Allocated(() => index.Project(viewport, ref buffer));
+
+        Assert.True(bytes == 0, $"indexed projection through {size} x {size} into a warm buffer allocated {bytes} bytes");
     }
 
     [Theory]

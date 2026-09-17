@@ -57,7 +57,7 @@ public sealed class ClientViewports(SimulationLoop loop, IHubContext<LifeHub, IL
     public Frame BuildFrame(string connectionId, Viewport viewport) => BuildFrame(connectionId, viewport, loop.Current);
 
     public Frame BuildFrame(string connectionId, Viewport viewport, UniverseSnapshot snapshot) =>
-        BuildFrame(connectionId, viewport, snapshot, CellsCodec.Encode(viewport.Project(snapshot.Cells), viewport.Width, viewport.Height));
+        BuildFrame(connectionId, viewport, snapshot, CellsCodec.Encode(snapshot.Index.Project(viewport), viewport.Width, viewport.Height));
 
     private Frame BuildFrame(string connectionId, Viewport viewport, UniverseSnapshot snapshot, string cells)
     {
@@ -86,7 +86,7 @@ public sealed class ClientViewports(SimulationLoop loop, IHubContext<LifeHub, IL
         foreach (var (connectionId, client) in _clients)
         {
             var viewport = client.Viewport;
-            var count = viewport.Project(snapshot.Cells, ref client.Buffer);
+            var count = snapshot.Index.Project(viewport, ref client.Buffer);
             var cells = CellsCodec.Encode(client.Buffer.AsSpan(0, count), viewport.Width, viewport.Height, ref client.Scratch);
             var frame = BuildFrame(connectionId, viewport, snapshot, cells);
             sends.Add(hub.Clients.Client(connectionId).ReceiveFrame(frame, cancellationToken));

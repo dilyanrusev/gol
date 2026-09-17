@@ -12,6 +12,9 @@ public sealed class Universe
     private HashSet<Cell> _live = new();
     private HashSet<Cell> _next = new();
     private readonly Dictionary<Cell, int> _neighbourCounts = new();
+    // Kept between snapshots so that a steady population indexes without allocating anything but
+    // the snapshot itself.
+    private readonly SpatialIndex.Builder _indexBuilder = new();
 
     public ulong Generation { get; private set; }
 
@@ -65,6 +68,18 @@ public sealed class Universe
 
     /// <summary>Copies the current population into a new array (a stable snapshot).</summary>
     public Cell[] Snapshot() => _live.ToArray();
+
+    /// <summary>
+    /// Copies the current population into a new array grouped by chunk, with the chunk table that
+    /// makes viewport projection cheap (see <see cref="SpatialIndex.Builder"/>). Reads the live set
+    /// directly, so the grouped array is the only copy made.
+    /// </summary>
+    public SpatialIndex SnapshotIndexed()
+    {
+        _indexBuilder.Begin(_live.Count);
+        foreach (var cell in _live) _indexBuilder.Add(cell);
+        return _indexBuilder.Finish();
+    }
 
     public void Step()
     {

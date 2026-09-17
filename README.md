@@ -38,11 +38,12 @@ Playwright package, which the test fixture downloads on first run (about 150 MB,
 dotnet run -c Release --project benchmarks/GameOfLife.Benchmarks -- --filter '*'
 ```
 
-BenchmarkDotNet with the memory diagnoser: one generation and one snapshot copy on three worlds
-(the glider gun at generation 1000, the acorn at 5000, a 50 000-cell soup), viewport projection at
-100 and 500 cells across (fresh array versus a client's reused buffer), a frame's JSON cost (index
-list through reflection, through source generation, and the packed string), the cell codec, and a
-whole server tick with 1, 4 and 16 clients.
+BenchmarkDotNet with the memory diagnoser: one generation and one snapshot copy (flat and grouped
+by chunk) on three worlds (the glider gun at generation 1000, the acorn at 5000, a 50 000-cell
+soup), viewport projection at 100 and 500 cells across (fresh array, a client's reused buffer, and
+through the chunk index), a frame's JSON cost (index list through reflection, through source
+generation, and the packed string), the cell codec, and a whole server tick with 1, 4 and 16
+clients.
 Committed baselines live in `benchmarks/results/`; compare a change against the latest one.
 Allocation counts are exact and portable, timings are not, so the Core tests also carry allocation
 budgets that fail the build when a hot path starts allocating more.
@@ -53,7 +54,7 @@ budgets that fail the build when a hot path starts allocating more.
 | --- | --- |
 | `src/GameOfLife.Core` | Engine (`Universe`), RLE parser/writer, `Viewport`, `SimulationLoop`. No ASP.NET dependency. |
 | `src/GameOfLife.Web` | Razor Pages shell, SignalR hub, hosted service, React client in `Scripts/` (`viewer/` and `editor/` are the two page bundles, `site/` the shared Bootstrap shell; `Scripts/generated/` is produced by the build from `ILifeHub`, `ILifeClient` and `Frame`; commit it, never edit it). All client dependencies, Bootstrap and SignalR included, come from `package.json`. |
-| `benchmarks/GameOfLife.Benchmarks` | BenchmarkDotNet: engine step and snapshot, viewport projection, frame JSON, whole server tick. Baselines in `benchmarks/results/`. |
+| `benchmarks/GameOfLife.Benchmarks` | BenchmarkDotNet: engine step and snapshot, viewport projection (flat and indexed), frame JSON, whole server tick. Baselines in `benchmarks/results/`. |
 | `tests/GameOfLife.Core.Tests` | xUnit: RLE round trips, engine vs. known patterns, viewport seam handling, loop commands. |
 | `tests/GameOfLife.Web.Tests` | xUnit integration tests: hub contract over the .NET SignalR client; page behaviour in headless Chromium via Playwright (initial state on connect, controls shared across browsers, viewports per browser, exclusive editing with its banner and countdown). |
 | `patterns/` | Example `.rle` files (Gosper glider gun). |
@@ -96,6 +97,16 @@ budgets that fail the build when a hot path starts allocating more.
   packed by `CellsCodec` into a short string: delta-coded indices for sparse views, a bitmap for
   dense ones, chosen per frame. Each connection keeps its projection and encoding buffers, so a
   broadcast allocates only the string; frames returned from hub methods allocate their own.
+- **Snapshots are grouped by chunk.** The loop copies the population out once per generation into
+  a `SpatialIndex`: the cell array ordered by 64 x 64 chunk, with a table from chunk to range. It
+  allocates the same one array as the flat copy plus the chunk table, takes about five times as
+  long to build (one dictionary lookup per cell), and is built once no matter how many clients are
+  connected. A client's projection then visits only the chunks its viewport overlaps (four to nine
+  for a 100 x 100 view; 81 for the largest), so its cost follows what it looks at rather than the
+  whole population: a 100 x 100 view of a 50 000-cell soup projects in 31 μs instead of 172. Chunk
+  keys are the coordinates shifted right by six, masked on the way round the torus, so a view
+  across the seam works like any other. The rebuild pays for itself from about four clients on a
+  large world; storing the population in chunks inside the engine would remove it.
 - **RLE everywhere.** Uploads, the pattern editor and the "save" download all go through the same
   parser/writer. Saved files carry a `#C origin x y` comment so they reload in place; files without
   it are centred on the universe.
