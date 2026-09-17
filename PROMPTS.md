@@ -230,3 +230,13 @@ Result: `Scripts/viewer/ViewerConfigContext.tsx` holds the `ViewerConfig` type, 
 `ViewerConfigProvider` and a `useViewerConfig` hook that throws outside a provider. `main.tsx` still
 reads the mount element's data attributes and now wraps `<Viewer />` in the provider; `Viewer`,
 `SimulationCard`, `ViewportCard` and `SeedCard` read the config from the hook instead of props.
+
+### 14. Bootstrap icons and tooltips on the viewport controls
+
+> The viewport controls use unicode arrows, but they don't render OK in Firefox. Let's use bootstrap
+> icons, and more specifically, the filled caret icons for the directions, and byllseye for
+> centering. Also, add bootstrap tooltips.
+
+Result: `react-bootstrap-icons` (SVG components, so no icon font to serve) provides the filled
+carets, the bullseye and zoom icons; every viewport button is wrapped in a react-bootstrap tooltip
+that also states the pan step in cells. Accessible names stay on the buttons; icons are aria-hidden.
