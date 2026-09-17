@@ -23,6 +23,7 @@
     <div class="col-lg-8">
         <div class="d-flex flex-wrap align-items-center gap-3 mb-2">
             <span class="badge text-bg-secondary" id="status-connection">connecting…</span>
+            <span class="badge text-bg-secondary" id="status-running" aria-live="polite">–</span>
             <span>Generation <strong id="status-generation">–</strong></span>
             <span>Population <strong id="status-population">–</strong></span>
             <span>Viewport <strong id="status-viewport">–</strong> cells</span>
@@ -37,13 +38,13 @@
             <div class="card-header">Simulation <small class="text-body-secondary">(shared by all clients)</small></div>
             <div class="card-body">
                 <div class="btn-group w-100 mb-3" role="group" aria-label="Simulation controls">
-                    <button type="button" class="btn btn-success" id="btn-start">Start</button>
-                    <button type="button" class="btn btn-warning" id="btn-pause">Pause</button>
-                    <button type="button" class="btn btn-outline-primary" id="btn-step">Step</button>
-                    <button type="button" class="btn btn-outline-danger" id="btn-reset">Reset</button>
+                    <button type="button" class="btn btn-success" id="btn-start" disabled>Start</button>
+                    <button type="button" class="btn btn-warning" id="btn-pause" disabled>Pause</button>
+                    <button type="button" class="btn btn-outline-primary" id="btn-step" disabled>Step</button>
+                    <button type="button" class="btn btn-outline-danger" id="btn-reset" disabled>Reset</button>
                 </div>
                 <label for="speed" class="form-label">Speed: <span id="speed-value">@Model.CurrentSpeed</span> generations/s</label>
-                <input type="range" class="form-range" id="speed" min="@Model.MinSpeed" max="@Model.MaxSpeed" value="@Model.CurrentSpeed" />
+                <input type="range" class="form-range" id="speed" min="@Model.MinSpeed" max="@Model.MaxSpeed" value="@Model.CurrentSpeed" disabled />
             </div>
         </div>
 

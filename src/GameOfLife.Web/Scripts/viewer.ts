@@ -19,8 +19,10 @@ const gridWidth = $<HTMLInputElement>("grid-width");
 const gridHeight = $<HTMLInputElement>("grid-height");
 const speed = $<HTMLInputElement>("speed");
 
+// Placeholder until the hub sends the real state; nothing below trusts it as the world's state.
 let frame: Frame = { generation: 0, population: 0, running: false, generationsPerSecond: 10, width: 100, height: 100, cells: [] };
 let cellPx = 1;
+const simulationControls = ["btn-start", "btn-pause", "btn-step", "btn-reset"].map((id) => $<HTMLButtonElement>(id));
 
 // ---------- rendering ----------
 function render(): void {
@@ -65,6 +67,7 @@ function render(): void {
   ctx.strokeRect(ox + 0.5, oy + 0.5, gridW - 1, gridH - 1);
 }
 
+/** Makes the page reflect the world exactly as the hub describes it: counters, viewport, speed and run state. */
 function applyFrame(f: Frame): void {
   frame = f;
   $("status-generation").textContent = f.generation.toLocaleString();
@@ -73,9 +76,25 @@ function applyFrame(f: Frame): void {
   if (document.activeElement !== gridWidth) gridWidth.value = String(f.width);
   if (document.activeElement !== gridHeight) gridHeight.value = String(f.height);
   if (document.activeElement !== speed) { speed.value = String(f.generationsPerSecond); $("speed-value").textContent = speed.value; }
-  $("btn-start").classList.toggle("active", f.running);
-  $("btn-pause").classList.toggle("active", !f.running);
+  speed.disabled = false;
+  const runState = $("status-running");
+  runState.textContent = f.running ? "running" : "paused";
+  runState.className = `badge ${f.running ? "text-bg-success" : "text-bg-secondary"}`;
+  const start = $<HTMLButtonElement>("btn-start");
+  const pause = $<HTMLButtonElement>("btn-pause");
+  start.classList.toggle("active", f.running);
+  pause.classList.toggle("active", !f.running);
+  start.disabled = f.running;
+  pause.disabled = !f.running;
+  $<HTMLButtonElement>("btn-step").disabled = false;
+  $<HTMLButtonElement>("btn-reset").disabled = false;
   render();
+}
+
+/** While there is no live connection the shared controls cannot act, so they are greyed out. */
+function disableSimulationControls(): void {
+  for (const button of simulationControls) button.disabled = true;
+  speed.disabled = true;
 }
 
 new ResizeObserver(render).observe(canvas);
@@ -93,10 +112,26 @@ const setStatus = (text: string, cls: string) => {
   el.className = `badge ${cls}`;
 };
 
-connection.on("frame", applyFrame);
-connection.onreconnecting(() => setStatus("reconnecting…", "text-bg-warning"));
-connection.onreconnected(async () => { setStatus("connected", "text-bg-success"); applyFrame(await connection.invoke<Frame>("Refresh")); });
-connection.onclose(() => setStatus("disconnected", "text-bg-danger"));
+/**
+ * Pulls the current frame from the hub so the page starts from the world's actual state
+ * (generation, population, running/paused, speed, viewport) rather than the placeholder above.
+ * Used on every (re)connect; the hub's own push on connect is not relied upon.
+ */
+async function initialiseFromHub(): Promise<void> {
+  setStatus("connected", "text-bg-success");
+  try {
+    applyFrame(await connection.invoke<Frame>("Refresh"));
+  } catch (err) {
+    console.error("Refresh", err);
+    setStatus("no state from server", "text-bg-danger");
+  }
+}
+
+// Name matches ILifeClient.ReceiveFrame on the server.
+connection.on("ReceiveFrame", applyFrame);
+connection.onreconnecting(() => { setStatus("reconnecting…", "text-bg-warning"); disableSimulationControls(); });
+connection.onreconnected(initialiseFromHub);
+connection.onclose(() => { setStatus("disconnected", "text-bg-danger"); disableSimulationControls(); });
 
 async function invoke(method: string, ...args: unknown[]): Promise<void> {
   try {
@@ -151,7 +186,8 @@ document.querySelectorAll<HTMLButtonElement>("[data-pan]").forEach((b) => {
   b.addEventListener("click", () => pan(dx * Math.max(1, Math.round(frame.width / 10)), dy * Math.max(1, Math.round(frame.height / 10))));
 });
 
+disableSimulationControls();
 render();
 connection.start()
-  .then(() => setStatus("connected", "text-bg-success"))
+  .then(initialiseFromHub)
   .catch((err) => { console.error(err); setStatus("connection failed", "text-bg-danger"); });

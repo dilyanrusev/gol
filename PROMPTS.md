@@ -77,3 +77,26 @@ and seeding from it.
 > Can you save to prompt history in PROMPTS.md?
 
 Result: this file.
+
+## Session 2 — 2026-09-17
+
+### 5. Initialise the client from the hub's state
+
+> on the client side, when a new browser connects, the state of the world is not taken into
+> account. E.g. whether the simulation is running, paused, etc, is not used. In the client, on
+> connect to the hub, the state should be initialized according to the Frame
+
+Result: `viewer.ts` now calls `Refresh` right after `connection.start()` resolves (the same path
+as after a reconnect) and applies the returned frame, instead of relying on the hub's push from
+`OnConnectedAsync`. The frame drives a new running/paused badge, disables Start while running and
+Pause while paused, and the simulation buttons and speed slider stay disabled until the first
+frame arrives (and again while reconnecting or after the connection closes).
+
+### 6. Typed hub clients
+
+> Can you use Hub<T>, so that clients are more type-safe and not just string constants?
+
+Result: new `Hubs/ILifeClient.cs` declares `ReceiveFrame(Frame, CancellationToken)`; `LifeHub`
+derives from `Hub<ILifeClient>` and `ClientViewports` takes `IHubContext<LifeHub, ILifeClient>`,
+so every push is a compiled method call and the `FrameMethod` string constant is gone. The browser
+subscribes to `ReceiveFrame` (the interface method name) in `viewer.ts`.
