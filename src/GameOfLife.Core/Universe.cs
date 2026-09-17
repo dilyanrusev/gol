@@ -27,6 +27,21 @@ public sealed class Universe
         else _live.Remove(cell);
     }
 
+    /// <summary>Flips one cell and returns its new state.</summary>
+    public bool Toggle(Cell cell)
+    {
+        if (_live.Remove(cell)) return false;
+        _live.Add(cell);
+        return true;
+    }
+
+    /// <summary>Replaces the population without touching the generation counter (used to undo edits).</summary>
+    public void Replace(IEnumerable<Cell> cells)
+    {
+        _live.Clear();
+        _live.UnionWith(cells);
+    }
+
     public void Clear()
     {
         _live.Clear();

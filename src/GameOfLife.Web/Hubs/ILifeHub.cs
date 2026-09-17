@@ -23,13 +23,31 @@ public interface ILifeHub
     /// <summary>Returns the current frame (used to initialise the page and after reconnects).</summary>
     Task<Frame> Refresh();
 
+    /// <summary>Runs the simulation for everyone. Refused while a client is editing.</summary>
     Task Start();
 
     Task Pause();
 
+    /// <summary>Advances one generation. Refused while a client is editing.</summary>
     Task Step();
 
+    /// <summary>Restores the seed at generation 0. Refused while a client is editing.</summary>
     Task Reset();
 
     Task SetSpeed(int generationsPerSecond);
+
+    /// <summary>
+    /// Takes the exclusive edit session for this client. Requires a paused simulation and no other
+    /// editor. Calling it again while already editing restarts the idle timeout.
+    /// </summary>
+    Task<Frame> BeginEdit();
+
+    /// <summary>Flips the cell at viewport position (x, y). Only the editing client may call it.</summary>
+    Task<Frame> ToggleCell(int x, int y);
+
+    /// <summary>Ends this client's edit session, keeping the edits, and resumes the simulation.</summary>
+    Task<Frame> EndEdit();
+
+    /// <summary>Ends this client's edit session and restores the universe as it was when editing began. Stays paused.</summary>
+    Task<Frame> CancelEdit();
 }

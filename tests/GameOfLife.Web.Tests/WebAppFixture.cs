@@ -29,8 +29,13 @@ public sealed class WebAppFixture : WebApplicationFactory<Program>, IAsyncLifeti
 
     public SimulationLoop Loop => Services.GetRequiredService<SimulationLoop>();
 
+    /// <summary>Short enough for a browser test to watch an edit session run out, long enough not to expire mid-test.</summary>
+    public static readonly TimeSpan EditTimeout = TimeSpan.FromSeconds(8);
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        builder.UseSetting("GameOfLife:EditTimeoutSeconds", EditTimeout.TotalSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
         // Full exception text in hub errors, so a failing test says what went wrong on the server.
         builder.ConfigureServices(services => services.Configure<HubOptions>(o => o.EnableDetailedErrors = true));
 
@@ -62,8 +67,16 @@ public sealed class WebAppFixture : WebApplicationFactory<Program>, IAsyncLifeti
         Browser = await _playwright.Chromium.LaunchAsync();
     }
 
-    /// <summary>Puts the shared simulation into a known state: the blinker, generation 0, paused.</summary>
-    public Task ResetAsync() => Loop.LoadAsync(Blinker);
+    /// <summary>
+    /// Puts the shared simulation into a known state: the blinker, generation 0, paused, nobody editing.
+    /// A previous test's editor may still be disconnecting, so its session is released here rather
+    /// than waited for.
+    /// </summary>
+    public async Task ResetAsync()
+    {
+        if (Loop.Current.Edit is { } edit) await Loop.ReleaseEditAsync(edit.Owner);
+        await Loop.LoadAsync(Blinker);
+    }
 
     public Task<IPage> NewPageAsync() => Browser.NewPageAsync(new() { BaseURL = BaseAddress.ToString() });
 

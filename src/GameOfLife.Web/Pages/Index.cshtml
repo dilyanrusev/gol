@@ -19,6 +19,25 @@
     </div>
 }
 
+@* Shown while any client holds the edit session. Sticky so the countdown stays in view while panning. *@
+<div id="edit-banner" class="alert alert-success sticky-top shadow mb-3" role="status" aria-live="polite" hidden>
+    <div class="d-flex flex-wrap align-items-center gap-3">
+        <div class="flex-grow-1">
+            <strong id="edit-banner-title"></strong>
+            <span id="edit-banner-text"></span>
+        </div>
+        <div class="text-nowrap">Unlocks in <strong id="edit-countdown" class="font-monospace">–:––</strong></div>
+        <div class="btn-group" id="edit-banner-actions" role="group" aria-label="Finish editing" hidden>
+            <button type="button" class="btn btn-primary" id="btn-edit-done" disabled>Done</button>
+            <button type="button" class="btn btn-outline-secondary" id="btn-edit-cancel" disabled>Cancel</button>
+        </div>
+    </div>
+    <div class="progress mt-2" id="edit-progress" role="progressbar" aria-label="Time left before editing unlocks"
+         aria-valuemin="0" aria-valuemax="100" aria-valuenow="100">
+        <div class="progress-bar bg-success" id="edit-progress-bar" style="width: 100%"></div>
+    </div>
+</div>
+
 <div class="row g-3">
     <div class="col-lg-8">
         <div class="d-flex flex-wrap align-items-center gap-3 mb-2">
@@ -31,6 +50,7 @@
         <canvas id="universe" class="universe-canvas w-100 border rounded bg-body-tertiary" tabindex="0"
                 aria-label="Game of Life universe viewport. Drag or use arrow keys to pan, scroll or pinch to zoom."></canvas>
         <p class="form-text">Drag to pan, scroll or pinch to zoom. Keyboard: arrows pan, + and - zoom, Home recentres.</p>
+        <p class="form-text" id="edit-hint">Click Edit cells, then click cells in the view to flip them.</p>
     </div>
 
     <div class="col-lg-4">
@@ -42,6 +62,11 @@
                     <button type="button" class="btn btn-warning" id="btn-pause" disabled>Pause</button>
                     <button type="button" class="btn btn-outline-primary" id="btn-step" disabled>Step</button>
                     <button type="button" class="btn btn-outline-danger" id="btn-reset" disabled>Reset</button>
+                </div>
+                @* The wrapper carries the tooltip: a disabled button receives no pointer events. *@
+                <div class="d-grid mb-3" id="btn-edit-wrap" tabindex="0" data-bs-toggle="tooltip" data-bs-placement="bottom"
+                     data-bs-title="Pause the simulation first, then you can edit cells.">
+                    <button type="button" class="btn btn-outline-primary" id="btn-edit" disabled>Edit cells</button>
                 </div>
                 <label for="speed" class="form-label">Speed: <span id="speed-value">@Model.CurrentSpeed</span> generations/s</label>
                 <input type="range" class="form-range" id="speed" min="@Model.MinSpeed" max="@Model.MaxSpeed" value="@Model.CurrentSpeed" disabled />

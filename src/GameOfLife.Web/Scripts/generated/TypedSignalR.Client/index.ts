@@ -115,6 +115,22 @@ class ILifeHub_HubProxy implements ILifeHub {
     public readonly setSpeed = async (generationsPerSecond: number): Promise<void> => {
         return await this.connection.invoke("SetSpeed", generationsPerSecond);
     }
+
+    public readonly beginEdit = async (): Promise<Frame> => {
+        return await this.connection.invoke("BeginEdit");
+    }
+
+    public readonly toggleCell = async (x: number, y: number): Promise<Frame> => {
+        return await this.connection.invoke("ToggleCell", x, y);
+    }
+
+    public readonly endEdit = async (): Promise<Frame> => {
+        return await this.connection.invoke("EndEdit");
+    }
+
+    public readonly cancelEdit = async (): Promise<Frame> => {
+        return await this.connection.invoke("CancelEdit");
+    }
 }
 
 

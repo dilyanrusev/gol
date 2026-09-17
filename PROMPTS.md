@@ -151,3 +151,48 @@ Result: `call` is generic over `keyof ILifeHub` and takes `Parameters<ILifeHub[M
 method up on the generated proxy. Call sites pass the name and arguments only; an unknown name or
 wrong argument list is a compile error (verified with a scratch file: 4 deliberate mistakes, 4
 errors, the valid call accepted). Web tests green.
+
+### 10. Exclusive editing of the live universe
+
+> I have an additional requirement: when paused, the client (the browser) can edit the pattern
+> inside the view. Make sure that only one client can enter inside edit mode. When in edit mode, no
+> other client can start the simulation. Add tests (both unit and integration), and also make sure
+> that the UI explains to the user what is going on. Before implementing, do you see problems with
+> this feature request, and also do you need additional decisions/information?
+
+> I agree with your decisions. In addition, the banner should display both time remainig until
+> unlock, and a progress bar that shows how much time is remaning (starts full, goes to empty as
+> time passes by). Style it with bootstrap shadows. Let it be sticky on the top. Use bootstrap
+> colors: success when there is a lot of time, warning when 50% and below, danger when 20% and
+> below. Ask me if I something is unclear
+
+Decisions agreed: Done/Cancel/disconnect/5-minute idle timeout end a session; Start, Step, Reset
+and seed loading are refused meanwhile (speed and viewport changes stay allowed); editing requires
+a paused simulation; edits are live for everyone with Cancel restoring the pre-edit state; edits at
+generation 0 become the seed. Clicks are refused below 4 px per cell.
+
+Result: Core gains `EditSession`, `EditInProgressException`, `Universe.Toggle/Replace`, and
+`SimulationLoop.{BeginEdit,ToggleCell,EndEdit,CancelEdit,ReleaseEdit}Async` with expiry handled in
+the loop; commands now complete only after the snapshot is rebuilt. `Frame` carries
+`Editing/EditingByMe/EditRemainingMs/EditTimeoutMs`; the hub exposes the four edit methods, maps
+clicks through the caller's viewport, releases on disconnect and explains refusals. The page has an
+Edit button, a sticky shadowed banner with countdown and draining progress bar (success > 50 % >
+warning > 20 % > danger) shown to editor and observers alike, and a crosshair cursor while editing.
+Tests: 20 Core unit tests, 9 hub tests, 5 browser tests (banners, clicking cells, cancel, the
+countdown draining through the colours and unlocking, edit button waiting for a pause).
+
+### 11. Done resumes; tooltip on the disabled Edit button
+
+> After interacting with the server, I changed my mind. It feels better to resume once "done" is
+> clicked. Also, add a bootstrap tooltip on the disabled edit cells button that explains that you
+> have to pause first.
+
+Result: `SimulationLoop.EndEditAsync(owner, resume)` commits and, when asked, starts the
+simulation in the same command; the hub's `EndEdit` passes `resume: true`. Cancel, disconnect and
+expiry still leave it paused. The Edit button sits in a wrapper carrying a Bootstrap tooltip
+(disabled buttons get no pointer events) whose text is "pause first" while running and "another
+client is editing" while locked; the tooltip instance exists only while there is something to
+explain (Bootstrap re-creates a shown tooltip on every content change, which flickered at ten
+frames a second while running, and can leave a hidden element behind on a quick re-hover). Tests
+updated and added at all three levels; Done now runs a generation immediately, which the tests
+account for by checking the adopted seed rather than the transient population.

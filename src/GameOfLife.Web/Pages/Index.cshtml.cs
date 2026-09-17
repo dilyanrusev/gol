@@ -50,6 +50,10 @@ public class IndexModel(SimulationLoop loop) : PageModel
         {
             Error = $"Could not read the RLE file: {ex.Message}";
         }
+        catch (EditInProgressException ex)
+        {
+            Error = ex.Message;
+        }
         return RedirectToPage();
     }
 

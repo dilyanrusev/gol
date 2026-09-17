@@ -168,4 +168,30 @@ public class UniverseTests
         Assert.Equal(0UL, u.Generation);
         Assert.Equal(4, u.Population);
     }
+
+    [Fact]
+    public void Toggle_flips_a_cell_and_reports_its_new_state()
+    {
+        var u = new Universe();
+        var c = new Cell(5, 5);
+
+        Assert.True(u.Toggle(c));
+        Assert.True(u.IsAlive(c));
+        Assert.False(u.Toggle(c));
+        Assert.False(u.IsAlive(c));
+        Assert.Equal(0, u.Population);
+    }
+
+    [Fact]
+    public void Replace_swaps_the_population_but_keeps_the_generation()
+    {
+        var u = new Universe();
+        u.Load([new Cell(1, 0), new Cell(1, 1), new Cell(1, 2)]);
+        u.Step();
+
+        u.Replace([new Cell(9, 9)]);
+
+        Assert.Equal(1UL, u.Generation);
+        Assert.Equal(new[] { new Cell(9, 9) }, u.Snapshot());
+    }
 }

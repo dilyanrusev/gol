@@ -20,6 +20,13 @@ the server alone (for example in a container without Node).
 The server seeds itself with `patterns/gosper_glider_gun.rle` (configurable through
 `GameOfLife:SeedFile`). Press **Start** in the browser to run it.
 
+While paused, one browser at a time can press **Edit cells** and flip cells by clicking them in
+its view. Everyone sees a sticky banner with a countdown: the session ends on Done (which
+resumes the simulation), Cancel, disconnect, or after `GameOfLife:EditTimeoutSeconds` (default
+300) without an edit; the last three leave it paused. Until then Start, Step, Reset and seed
+loading are refused for all clients. Edits made at generation 0 become the new seed, so Reset
+returns to them.
+
 Tests: `dotnet test`. The Web tests start the real server on Kestrel at a random port and drive it
 with the .NET SignalR client and with Playwright. They use the Chromium build bundled with the
 Playwright package, which the test fixture downloads on first run (about 150 MB, cached per user).
@@ -31,7 +38,7 @@ Playwright package, which the test fixture downloads on first run (about 150 MB,
 | `src/GameOfLife.Core` | Engine (`Universe`), RLE parser/writer, `Viewport`, `SimulationLoop`. No ASP.NET dependency. |
 | `src/GameOfLife.Web` | Razor Pages UI, SignalR hub, hosted service, TypeScript client in `Scripts/` (`Scripts/generated/` is produced by the build from `ILifeHub`, `ILifeClient` and `Frame`; commit it, never edit it). |
 | `tests/GameOfLife.Core.Tests` | xUnit: RLE round trips, engine vs. known patterns, viewport seam handling, loop commands. |
-| `tests/GameOfLife.Web.Tests` | xUnit integration tests: hub contract over the .NET SignalR client; page behaviour in headless Chromium via Playwright (initial state on connect, controls shared across browsers, viewports per browser). |
+| `tests/GameOfLife.Web.Tests` | xUnit integration tests: hub contract over the .NET SignalR client; page behaviour in headless Chromium via Playwright (initial state on connect, controls shared across browsers, viewports per browser, exclusive editing with its banner and countdown). |
 | `patterns/` | Example `.rle` files (Gosper glider gun). |
 
 ## Design
@@ -39,8 +46,12 @@ Playwright package, which the test fixture downloads on first run (about 150 MB,
 - **Sparse universe.** Live cells live in a `HashSet<Cell>` with `ulong` coordinates. A generation
   costs O(live cells). Unchecked `ulong` arithmetic gives torus wrapping for free.
 - **Single writer.** `SimulationLoop` owns the `Universe`. Every mutation (start, pause, step,
-  reset, load, speed) is a command posted to a channel and applied between generations. After each
+  reset, load, speed, edit) is a command posted to a channel and applied between generations. After each
   change it publishes an immutable `UniverseSnapshot`.
+- **Exclusive editing lives in the loop.** An `EditSession` names one owner (a connection id) and a
+  deadline. Start, step, reset and load throw `EditInProgressException` while it exists, which is
+  why the seed upload page cannot bypass it either. The hub maps the owner's viewport-relative
+  clicks to absolute cells; the loop ends the session when it expires and publishes that too.
 - **Per-client viewports, kept on the server.** A client never sees an absolute coordinate. It
   starts centred on the seed pattern and only sends relative changes (`Pan(dx, dy)`, `Resize`,
   `Recentre`). Deltas outside JavaScript's safe-integer range are rejected; grid size is clamped to

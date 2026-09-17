@@ -1,7 +1,8 @@
 /**
  * Pointer-based pan and zoom for the viewport canvas: mouse drag / touch drag to pan,
- * wheel or pinch to zoom, plus keyboard. Emits whole-cell pans and zoom factors only;
- * it never knows anything about universe coordinates.
+ * wheel or pinch to zoom, a tap or click without movement to pick a cell, plus keyboard.
+ * Emits whole-cell pans, zoom factors and canvas pixel positions only; it never knows
+ * anything about universe coordinates.
  */
 export interface GestureHandlers {
   /** The view should move by (dx, dy) whole cells (positive = content dragged up/left). */
@@ -9,12 +10,17 @@ export interface GestureHandlers {
   /** The grid should shrink (factor < 1, zoom in) or grow (factor > 1, zoom out). */
   zoom(factor: number): void;
   recentre(): void;
+  /** A click or tap that did not turn into a drag or pinch, in CSS pixels from the canvas's top-left. */
+  tap?(x: number, y: number): void;
   /** Current size of one cell in CSS pixels; used to convert pointer movement into cells. */
   cellSize(): number;
 }
 
+/** Pointer travel (CSS px) beyond which a press counts as a drag rather than a tap. */
+const TAP_SLOP_PX = 5;
+
 export function attachGestures(canvas: HTMLCanvasElement, handlers: GestureHandlers): void {
-  const pointers = new Map<number, { x: number; y: number }>();
+  const pointers = new Map<number, { x: number; y: number; startX: number; startY: number; moved: boolean }>();
   let remainderX = 0;
   let remainderY = 0;
   let pinchDistance = 0;
@@ -40,20 +46,27 @@ export function attachGestures(canvas: HTMLCanvasElement, handlers: GestureHandl
 
   canvas.addEventListener("pointerdown", (e) => {
     canvas.setPointerCapture(e.pointerId);
-    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (pointers.size === 2) pinchDistance = distance();
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, startX: e.clientX, startY: e.clientY, moved: false });
+    if (pointers.size === 2) {
+      pinchDistance = distance();
+      // Two fingers are a pinch, never a tap.
+      for (const p of pointers.values()) p.moved = true;
+    }
     canvas.focus({ preventScroll: true });
     e.preventDefault();
   });
 
   canvas.addEventListener("pointermove", (e) => {
-    const previous = pointers.get(e.pointerId);
-    if (!previous) return;
-    const current = { x: e.clientX, y: e.clientY };
-    pointers.set(e.pointerId, current);
+    const p = pointers.get(e.pointerId);
+    if (!p) return;
+    const dx = e.clientX - p.x;
+    const dy = e.clientY - p.y;
+    p.x = e.clientX;
+    p.y = e.clientY;
+    if (!p.moved && Math.hypot(p.x - p.startX, p.y - p.startY) > TAP_SLOP_PX) p.moved = true;
 
     if (pointers.size === 1) {
-      flushPan(current.x - previous.x, current.y - previous.y);
+      flushPan(dx, dy);
     } else if (pointers.size === 2) {
       const d = distance();
       if (pinchDistance > 0 && Math.abs(d - pinchDistance) > 12) {
@@ -63,12 +76,20 @@ export function attachGestures(canvas: HTMLCanvasElement, handlers: GestureHandl
     }
   });
 
-  const release = (e: PointerEvent) => {
+  canvas.addEventListener("pointerup", (e) => {
+    const p = pointers.get(e.pointerId);
     pointers.delete(e.pointerId);
     if (pointers.size < 2) pinchDistance = 0;
-  };
-  canvas.addEventListener("pointerup", release);
-  canvas.addEventListener("pointercancel", release);
+    if (p && !p.moved && handlers.tap) {
+      const rect = canvas.getBoundingClientRect();
+      handlers.tap(e.clientX - rect.left, e.clientY - rect.top);
+    }
+  });
+
+  canvas.addEventListener("pointercancel", (e) => {
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinchDistance = 0;
+  });
 
   canvas.addEventListener("wheel", (e) => {
     e.preventDefault();

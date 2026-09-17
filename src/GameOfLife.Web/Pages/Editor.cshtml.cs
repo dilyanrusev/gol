@@ -52,5 +52,10 @@ public class EditorModel(SimulationLoop loop) : PageModel
             Error = $"Could not read the pattern: {ex.Message}";
             return Page();
         }
+        catch (EditInProgressException ex)
+        {
+            Error = ex.Message;
+            return Page();
+        }
     }
 }

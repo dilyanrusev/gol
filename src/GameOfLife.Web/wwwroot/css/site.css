@@ -20,6 +20,10 @@ html {
     cursor: grabbing;
 }
 
+.universe-canvas.editing {
+    cursor: crosshair;
+}
+
 .universe-canvas:focus-visible {
     outline: 2px solid var(--bs-primary);
     outline-offset: 2px;

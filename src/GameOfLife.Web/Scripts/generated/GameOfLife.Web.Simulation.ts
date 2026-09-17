@@ -18,5 +18,13 @@ export type Frame = {
     height: number;
     /** Transpiled from int[] */
     cells: number[];
+    /** Transpiled from bool */
+    editing: boolean;
+    /** Transpiled from bool */
+    editingByMe: boolean;
+    /** Transpiled from int */
+    editRemainingMs: number;
+    /** Transpiled from int */
+    editTimeoutMs: number;
 }
 

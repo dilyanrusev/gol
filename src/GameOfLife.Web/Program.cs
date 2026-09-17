@@ -9,9 +9,12 @@ builder.Services.AddSignalR();
 
 builder.Services.AddSingleton<ClientViewports>();
 // The loop is the single writer of the universe. Its observer fans each snapshot out to the
-// connected clients; the service is resolved lazily inside the lambda to avoid a construction cycle.
+// connected clients. GameOfLife:EditTimeoutSeconds bounds how long an idle edit session may hold it.
+// The service is resolved lazily inside the lambda to avoid a construction cycle.
 builder.Services.AddSingleton(sp => new SimulationLoop(
-    (snapshot, ct) => sp.GetRequiredService<ClientViewports>().BroadcastAsync(snapshot, ct)));
+    (snapshot, ct) => sp.GetRequiredService<ClientViewports>().BroadcastAsync(snapshot, ct),
+    editTimeout: TimeSpan.FromSeconds(builder.Configuration.GetValue(
+        "GameOfLife:EditTimeoutSeconds", SimulationLoop.DefaultEditTimeout.TotalSeconds))));
 builder.Services.AddHostedService<SimulationHostedService>();
 
 var app = builder.Build();

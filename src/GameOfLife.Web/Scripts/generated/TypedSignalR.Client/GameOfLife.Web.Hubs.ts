@@ -36,6 +36,7 @@ export type ILifeHub = {
     */
     refresh(): Promise<Frame>;
     /**
+    * Runs the simulation for everyone. Refused while a client is editing.
     * @returns Transpiled from System.Threading.Tasks.Task
     */
     start(): Promise<void>;
@@ -44,10 +45,12 @@ export type ILifeHub = {
     */
     pause(): Promise<void>;
     /**
+    * Advances one generation. Refused while a client is editing.
     * @returns Transpiled from System.Threading.Tasks.Task
     */
     step(): Promise<void>;
     /**
+    * Restores the seed at generation 0. Refused while a client is editing.
     * @returns Transpiled from System.Threading.Tasks.Task
     */
     reset(): Promise<void>;
@@ -56,6 +59,29 @@ export type ILifeHub = {
     * @returns Transpiled from System.Threading.Tasks.Task
     */
     setSpeed(generationsPerSecond: number): Promise<void>;
+    /**
+    * Takes the exclusive edit session for this client. Requires a paused simulation and no other
+    * editor. Calling it again while already editing restarts the idle timeout.
+    * @returns Transpiled from System.Threading.Tasks.Task<GameOfLife.Web.Simulation.Frame>
+    */
+    beginEdit(): Promise<Frame>;
+    /**
+    * Flips the cell at viewport position (x, y). Only the editing client may call it.
+    * @param x Transpiled from int
+    * @param y Transpiled from int
+    * @returns Transpiled from System.Threading.Tasks.Task<GameOfLife.Web.Simulation.Frame>
+    */
+    toggleCell(x: number, y: number): Promise<Frame>;
+    /**
+    * Ends this client's edit session, keeping the edits, and resumes the simulation.
+    * @returns Transpiled from System.Threading.Tasks.Task<GameOfLife.Web.Simulation.Frame>
+    */
+    endEdit(): Promise<Frame>;
+    /**
+    * Ends this client's edit session and restores the universe as it was when editing began. Stays paused.
+    * @returns Transpiled from System.Threading.Tasks.Task<GameOfLife.Web.Simulation.Frame>
+    */
+    cancelEdit(): Promise<Frame>;
 }
 
 /**
