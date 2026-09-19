@@ -613,3 +613,95 @@ with retained scratch. Fine as a split, except that the two had drifted into dif
 Now one `SpatialIndex.Builder` (begin, add, finish) holds the scratch and the counting sort; the
 engine keeps an instance and feeds it the live set, `Build` creates one for a span. The
 allocation-free path and the numbers are unchanged.
+
+## Session 3 — 2026-09-18
+
+### 37. Deployment: what goes in the container
+
+> lets start think about deployment. Is it possible to have benchmarks, testing, etc inside a
+> single container, or does it go against best practices?
+
+Answer: one Dockerfile, several stages, not one image with everything in it. A `build` stage (SDK
+plus Node, running the csproj's client pipeline), a `test` stage on top of it with Playwright's
+Chromium baked in (`docker build --target test`), and a `runtime` stage with only the ASP.NET
+runtime, the published app and `patterns/` — the only image that gets deployed. Benchmarks stay
+off the image path: BenchmarkDotNet needs the SDK at run time and its numbers mean nothing on
+shared or throttled CPUs; the committed markdown results in `benchmarks/results/` remain the
+record. Repo specifics noted: Node in the build stage or `-p:SkipClientBuild=true` with a separate
+node stage, `.config/dotnet-tools.json` copied before publish, `PLAYWRIGHT_BROWSERS_PATH` so the
+fixture's install call is a no-op, and a `.dockerignore`.
+
+### 38. Do uploads survive containerisation?
+
+> Will uploads work with you current setup?
+
+Answer: yes. The upload handler reads the `IFormFile` into memory, parses it and hands the pattern
+to the loop; nothing touches disk. Caveats: multipart files over 64 KB are spooled to `/tmp`
+(writable in the stock image; needs a tmpfs under `--read-only`); nginx's 1 MB default body limit
+would refuse 1–4 MB files before the app sees them; anti-forgery and TempData depend on the
+data-protection key ring, which is lost on every redeploy unless persisted (a stale tab gets a 400
+on its next upload; the post-redirect message is dropped once); `UseHttpsRedirection` behind a
+TLS-terminating proxy is harmless but blind without forwarded headers.
+
+### 39. Free-tier App Service
+
+> it will be hosted on Azure as container as a free tier web app. What does this change bsides the
+> requirement for reverse proxy forwarded headers?
+
+Answer, by impact: the F1 quotas (60 CPU-minutes and 165 MB outbound per day, 1 GB RAM) stop the
+site when exceeded, and this app spends both — the loop keeps stepping with no client connected
+once started, and a 500 × 500 view at 60 gen/s is about 2.5 MB/s, so the day's bandwidth goes in
+a minute; no Always On, so the container is unloaded after ~20 idle minutes and the in-memory
+universe with it; five concurrent WebSockets per instance (SignalR falls back to SSE and long
+polling beyond that); server GC on a single shared core with a memory cap; the 4 MB upload limit
+bounds the file, not the population RLE run lengths can describe; the site is public and
+unauthenticated (Easy Auth offered); `WEBSITES_PORT=8080`, `ASPNETCORE_FORWARDEDHEADERS_ENABLED`,
+HTTPS Only, container logs; ACR is not free, GHCR plus a GitHub Actions deploy by digest is.
+Proposed app-side changes: auto-pause when unwatched, production caps on speed, viewport and
+population, persistence of the universe and the key ring, workstation GC.
+
+### 40. The app-side changes
+
+> about storage, the documentation says WEBSITES_ENABLE_APP_SERVICE_STORAGE is always on for linux
+> containers. About writing, lets write to Environment.SpecialFolder.LocalApplicationData +
+> /dilyanrusev/game-of-life. IF it doesn't exist, create it. It will be running on my machine, as
+> well on the server. I want it open on purpose, so no authentication for now. Do the app-side
+> changes that you suggest.
+
+Sent while that turn was running:
+
+> I had an idea about using the native .net configuration framework, but on a second tought I
+> think it is not usable. Continue on.
+
+Result:
+
+- Core: `RleParser.Parse(text, maxPopulation)` refuses a pattern with more live cells than allowed
+  before the cells exist (`Pattern.MaxPopulation`, 2^20 by default); `SimulationLoop` takes a
+  `maxGenerationsPerSecond` and exposes it as `SpeedLimit`, which `SetSpeedAsync` clamps to.
+- Web: `GameOfLifeOptions` binds and validates the whole `GameOfLife` section at start
+  (`SeedFile`, `EditTimeoutSeconds`, `MaxGenerationsPerSecond`, `MaxViewportSize`,
+  `MaxPopulation`, `PauseWhenUnwatchedSeconds`, `SaveIntervalSeconds`, `StateDirectory`).
+  `UniverseStore` saves the population as `universe.rle` with its origin under
+  `<LocalApplicationData>/dilyanrusev/game-of-life` (created on demand; write-to-temp-and-swap;
+  storage failures are logged once and never thrown). `SimulationHostedService` restores the saved
+  universe before falling back to the seed file, saves every 60 s while the snapshot changes and
+  once more in `StopAsync`. `ClientViewports` schedules a pause 60 s after the last client leaves
+  and cancels it on the next connection, so a page reload does not interrupt a run, and caps the
+  default and requested grid at the configured size. The data-protection key ring lives in
+  `<state>/keys`. Workstation GC in the Web project; `appsettings.Production.json` sets 20 gen/s,
+  200 cells across, 100 000 cells per upload. The pages read their limits from the options and pass
+  the population cap to the parser; the seed file and the saved universe parse uncapped.
+- Tests: parser cap, loop speed limit, hub resize cap, unwatched pause, reconnect within the grace
+  period, and `PersistenceTests` (store round trip, idempotent save, unwritable directory, corrupt
+  file, restore on start, save on stop picked up by the next server). The fixture uses a temporary
+  state directory. 128 Core and 67 Web tests green; a Production smoke run confirmed the caps, the
+  state directory and the restore.
+- Decisions stated: the saved population reloads as the seed at generation 0 (the original seed
+  and the generation counter are not kept); growth during a run is not capped; the configuration
+  framework carries the limits and paths, the RLE file carries the state.
+
+### 41. This file
+
+> can you write this sessions' prompts in @PROMPTS.md
+
+Result: this section.

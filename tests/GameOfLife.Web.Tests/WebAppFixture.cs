@@ -32,9 +32,21 @@ public sealed class WebAppFixture : WebApplicationFactory<Program>, IAsyncLifeti
     /// <summary>Short enough for a browser test to watch an edit session run out, long enough not to expire mid-test.</summary>
     public static readonly TimeSpan EditTimeout = TimeSpan.FromSeconds(8);
 
+    /// <summary>
+    /// How long the simulation runs on with nobody connected before pausing itself. Short enough
+    /// to test, long enough that the gap between two tests' connections never trips it.
+    /// </summary>
+    public static readonly TimeSpan PauseWhenUnwatched = TimeSpan.FromSeconds(2);
+
+    /// <summary>The server's state directory: a fresh temporary folder, so the tests never touch the developer's saved universe.</summary>
+    public string StateDirectory { get; } = Path.Combine(Path.GetTempPath(), "game-of-life-tests", Guid.NewGuid().ToString("N"));
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        builder.UseSetting("GameOfLife:EditTimeoutSeconds", EditTimeout.TotalSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        var invariant = System.Globalization.CultureInfo.InvariantCulture;
+        builder.UseSetting("GameOfLife:EditTimeoutSeconds", EditTimeout.TotalSeconds.ToString(invariant));
+        builder.UseSetting("GameOfLife:PauseWhenUnwatchedSeconds", PauseWhenUnwatched.TotalSeconds.ToString(invariant));
+        builder.UseSetting("GameOfLife:StateDirectory", StateDirectory);
 
         // Full exception text in hub errors, so a failing test says what went wrong on the server.
         builder.ConfigureServices(services => services.Configure<HubOptions>(o => o.EnableDetailedErrors = true));
@@ -92,6 +104,14 @@ public sealed class WebAppFixture : WebApplicationFactory<Program>, IAsyncLifeti
         if (Browser is not null) await Browser.DisposeAsync();
         _playwright?.Dispose();
         await base.DisposeAsync();
+        try
+        {
+            Directory.Delete(StateDirectory, recursive: true);
+        }
+        catch (IOException)
+        {
+            // Left behind in the temp folder; nothing to do about it here.
+        }
     }
 }
 

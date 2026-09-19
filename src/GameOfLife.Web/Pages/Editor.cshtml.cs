@@ -1,11 +1,13 @@
 using GameOfLife.Core;
 using GameOfLife.Core.Rle;
+using GameOfLife.Web.Simulation;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Options;
 
 namespace GameOfLife.Web.Pages;
 
-public class EditorModel(SimulationLoop loop) : PageModel
+public class EditorModel(SimulationLoop loop, IOptions<GameOfLifeOptions> options) : PageModel
 {
     public const int GridSize = 100;
     public const int MaxRleLength = 1024 * 1024;
@@ -34,7 +36,7 @@ public class EditorModel(SimulationLoop loop) : PageModel
 
         try
         {
-            var pattern = RleParser.Parse(Rle);
+            var pattern = RleParser.Parse(Rle, options.Value.MaxPopulation);
             if (pattern.Width > GridSize || pattern.Height > GridSize)
             {
                 Error = $"The pattern must fit in {GridSize} x {GridSize} cells; this one is {pattern.Width} x {pattern.Height}.";

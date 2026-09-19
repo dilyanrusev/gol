@@ -52,7 +52,7 @@ public sealed class LifeHub(SimulationLoop loop, ClientViewports viewports) : Hu
     }
 
     public Task<Frame> Resize(int width, int height) =>
-        Task.FromResult(viewports.BuildFrame(Context.ConnectionId, viewports.Update(Context.ConnectionId, v => v.Resize(width, height))));
+        Task.FromResult(viewports.BuildFrame(Context.ConnectionId, viewports.Resize(Context.ConnectionId, width, height)));
 
     public Task<Frame> Recentre() =>
         Task.FromResult(viewports.BuildFrame(Context.ConnectionId, viewports.Recentre(Context.ConnectionId)));

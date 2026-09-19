@@ -123,4 +123,30 @@ public class SimulationLoopTests : IAsyncLifetime
         await _loop.SetSpeedAsync(0);
         Assert.Equal(SimulationLoop.MinGenerationsPerSecond, (await NextSnapshotAsync()).GenerationsPerSecond);
     }
+
+    [Fact]
+    public async Task A_lower_speed_limit_caps_the_default_and_every_request()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var loop = new SimulationLoop(maxGenerationsPerSecond: 5);
+        var run = loop.RunAsync(cts.Token);
+
+        Assert.Equal(5, loop.SpeedLimit);
+        Assert.Equal(5, loop.Current.GenerationsPerSecond);
+
+        await loop.SetSpeedAsync(SimulationLoop.MaxGenerationsPerSecond);
+        Assert.Equal(5, loop.Current.GenerationsPerSecond);
+        await loop.SetSpeedAsync(3);
+        Assert.Equal(3, loop.Current.GenerationsPerSecond);
+
+        cts.Cancel();
+        await run;
+    }
+
+    [Fact]
+    public void The_speed_limit_itself_stays_within_the_engine_range()
+    {
+        Assert.Equal(SimulationLoop.MaxGenerationsPerSecond, new SimulationLoop(maxGenerationsPerSecond: 1000).SpeedLimit);
+        Assert.Equal(SimulationLoop.MinGenerationsPerSecond, new SimulationLoop(maxGenerationsPerSecond: 0).SpeedLimit);
+    }
 }

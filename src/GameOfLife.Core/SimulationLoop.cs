@@ -18,6 +18,8 @@ namespace GameOfLife.Core;
 public sealed class SimulationLoop
 {
     public const int MinGenerationsPerSecond = 1;
+
+    /// <summary>The fastest any loop can go. A loop may be built with a lower <see cref="SpeedLimit"/>.</summary>
     public const int MaxGenerationsPerSecond = 60;
     public const int DefaultGenerationsPerSecond = 10;
 
@@ -38,11 +40,20 @@ public sealed class SimulationLoop
 
     private volatile UniverseSnapshot _current;
 
-    public SimulationLoop(Func<UniverseSnapshot, CancellationToken, Task>? observer = null, TimeSpan? editTimeout = null)
+    /// <param name="maxGenerationsPerSecond">
+    /// The ceiling <see cref="SetSpeedAsync"/> clamps to, for hosts that must bound their CPU and
+    /// bandwidth. Itself clamped to [<see cref="MinGenerationsPerSecond"/>, <see cref="MaxGenerationsPerSecond"/>].
+    /// </param>
+    public SimulationLoop(
+        Func<UniverseSnapshot, CancellationToken, Task>? observer = null,
+        TimeSpan? editTimeout = null,
+        int maxGenerationsPerSecond = MaxGenerationsPerSecond)
     {
         EditTimeout = editTimeout ?? DefaultEditTimeout;
         if (EditTimeout <= TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(editTimeout), "The edit timeout must be positive.");
+        SpeedLimit = Math.Clamp(maxGenerationsPerSecond, MinGenerationsPerSecond, MaxGenerationsPerSecond);
+        _generationsPerSecond = Math.Min(DefaultGenerationsPerSecond, SpeedLimit);
         _observer = observer ?? ((_, _) => Task.CompletedTask);
         _current = BuildSnapshot();
     }
@@ -51,6 +62,9 @@ public sealed class SimulationLoop
     public UniverseSnapshot Current => _current;
 
     public TimeSpan EditTimeout { get; }
+
+    /// <summary>The fastest speed this loop accepts, in generations per second.</summary>
+    public int SpeedLimit { get; }
 
     public Task StartAsync() => PostAsync(() => { RequireNotEditing(); _running = true; });
 
@@ -61,7 +75,7 @@ public sealed class SimulationLoop
     public Task StepAsync() => PostAsync(() => { RequireNotEditing(); _universe.Step(); });
 
     public Task SetSpeedAsync(int generationsPerSecond) =>
-        PostAsync(() => _generationsPerSecond = Math.Clamp(generationsPerSecond, MinGenerationsPerSecond, MaxGenerationsPerSecond));
+        PostAsync(() => _generationsPerSecond = Math.Clamp(generationsPerSecond, MinGenerationsPerSecond, SpeedLimit));
 
     /// <summary>
     /// Replaces the universe with <paramref name="pattern"/> and pauses. The pattern is placed at its

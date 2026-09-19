@@ -3,6 +3,7 @@ using GameOfLife.Core;
 using GameOfLife.Web.Simulation;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace GameOfLife.Web.Tests;
 
@@ -120,5 +121,56 @@ public sealed class HubTests(WebAppFixture app) : IAsyncLifetime
 
         Assert.Equal((20, 30), (resized.Width, resized.Height));
         Assert.Equal((Viewport.DefaultSize, Viewport.DefaultSize), (other.Width, other.Height));
+    }
+
+    [Fact]
+    public async Task Resize_is_capped_by_the_server_limit()
+    {
+        var (connection, _) = await ConnectAsync();
+        var limit = app.Services.GetRequiredService<ClientViewports>().MaxSize;
+
+        var frame = await connection.InvokeAsync<Frame>(nameof(Hubs.ILifeHub.Resize), limit + 1, limit);
+
+        Assert.Equal(limit, frame.Width);
+        Assert.Equal(limit, frame.Height);
+    }
+
+    [Fact]
+    public async Task The_simulation_pauses_itself_once_nobody_has_watched_for_the_grace_period()
+    {
+        var (connection, frames) = await ConnectAsync();
+        await connection.InvokeAsync(nameof(Hubs.ILifeHub.Start));
+        await NextAsync(frames, f => f.Running);
+
+        await connection.DisposeAsync();
+
+        await WaitUntilAsync(() => !app.Loop.Current.Running, WebAppFixture.PauseWhenUnwatched + Timeout);
+        Assert.False(app.Loop.Current.Running);
+    }
+
+    [Fact]
+    public async Task Reconnecting_within_the_grace_period_keeps_the_simulation_running()
+    {
+        var (first, frames) = await ConnectAsync();
+        await first.InvokeAsync(nameof(Hubs.ILifeHub.Start));
+        await NextAsync(frames, f => f.Running);
+
+        // A page reload: the old connection goes, the new one arrives well within the grace period.
+        await first.DisposeAsync();
+        var (_, laterFrames) = await ConnectAsync();
+        await NextAsync(laterFrames);
+
+        await Task.Delay(WebAppFixture.PauseWhenUnwatched + TimeSpan.FromSeconds(1));
+        Assert.True(app.Loop.Current.Running);
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout)
+    {
+        using var cts = new CancellationTokenSource(timeout);
+        while (!condition())
+        {
+            cts.Token.ThrowIfCancellationRequested();
+            await Task.Delay(50, cts.Token);
+        }
     }
 }

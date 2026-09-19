@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using GameOfLife.Core;
 using GameOfLife.Web.Hubs;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Options;
 
 namespace GameOfLife.Web.Simulation;
 
@@ -10,14 +11,26 @@ namespace GameOfLife.Web.Simulation;
 /// and receive <see cref="Frame"/>s projected through their own viewport.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Each connection also owns a projection buffer and an encoding scratch buffer that the broadcast
 /// reuses generation after generation: they grow to the largest frame the client has had and are
 /// then never allocated again, and they go away with the connection. Only the broadcast may use it: the loop
 /// awaits every send before publishing the next generation, so the previous frame has been
 /// serialised by the time the buffer is overwritten. Frames returned from hub methods are
 /// serialised after the method has returned, with no way to know when, so they get their own arrays.
+/// </para>
+/// <para>
+/// This is also where the server learns that nobody is watching. When the last connection goes,
+/// a pause is scheduled <see cref="GameOfLifeOptions.PauseWhenUnwatchedSeconds"/> later and
+/// cancelled by the next connection, so a reload keeps the simulation running but a closed tab
+/// does not leave it stepping for nobody.
+/// </para>
 /// </remarks>
-public sealed class ClientViewports(SimulationLoop loop, IHubContext<LifeHub, ILifeClient> hub, ILogger<ClientViewports> logger)
+public sealed class ClientViewports(
+    SimulationLoop loop,
+    IHubContext<LifeHub, ILifeClient> hub,
+    IOptions<GameOfLifeOptions> options,
+    ILogger<ClientViewports> logger)
 {
     private sealed class Client(Viewport viewport)
     {
@@ -27,28 +40,102 @@ public sealed class ClientViewports(SimulationLoop loop, IHubContext<LifeHub, IL
     }
 
     private readonly ConcurrentDictionary<string, Client> _clients = new();
+    private readonly int _maxSize = options.Value.MaxViewportSize;
+    private readonly TimeSpan? _pauseWhenUnwatched = options.Value.PauseWhenUnwatched;
+    private readonly object _unwatchedGate = new();
+    private CancellationTokenSource? _unwatched;
 
     public int Count => _clients.Count;
 
+    /// <summary>The largest grid this server hands out, per side.</summary>
+    public int MaxSize => _maxSize;
+
     public Viewport Register(string connectionId)
     {
-        var viewport = Viewport.CentredOn(loop.Current.SeedCentre);
+        var viewport = Default();
         _clients[connectionId] = new Client(viewport);
+        CancelPauseWhenUnwatched();
         return viewport;
     }
 
-    public void Remove(string connectionId) => _clients.TryRemove(connectionId, out _);
+    public void Remove(string connectionId)
+    {
+        _clients.TryRemove(connectionId, out _);
+        if (_clients.IsEmpty) SchedulePauseWhenUnwatched();
+    }
 
     /// <summary>The connection's viewport, or a default one centred on the seed if it has none yet.</summary>
     public Viewport Get(string connectionId) =>
-        _clients.TryGetValue(connectionId, out var client) ? client.Viewport : Viewport.CentredOn(loop.Current.SeedCentre);
+        _clients.TryGetValue(connectionId, out var client) ? client.Viewport : Default();
 
     /// <summary>Applies a change to the connection's viewport and returns the new value.</summary>
     public Viewport Update(string connectionId, Func<Viewport, Viewport> change)
     {
-        var client = _clients.GetOrAdd(connectionId, _ => new Client(Viewport.CentredOn(loop.Current.SeedCentre)));
+        var client = _clients.GetOrAdd(connectionId, _ => new Client(Default()));
         client.Viewport = change(client.Viewport);
         return client.Viewport;
+    }
+
+    /// <summary>Changes the grid size, keeping the centre, within this server's limit rather than the engine's.</summary>
+    public Viewport Resize(string connectionId, int width, int height) =>
+        Update(connectionId, v => v.Resize(Math.Min(width, _maxSize), Math.Min(height, _maxSize)));
+
+    private Viewport Default()
+    {
+        var size = Math.Min(Viewport.DefaultSize, _maxSize);
+        return Viewport.CentredOn(loop.Current.SeedCentre, size, size);
+    }
+
+    private void SchedulePauseWhenUnwatched()
+    {
+        if (_pauseWhenUnwatched is not { } grace) return;
+        var cts = new CancellationTokenSource();
+        lock (_unwatchedGate)
+        {
+            _unwatched?.Cancel();
+            _unwatched = cts;
+        }
+        _ = PauseAfterAsync(grace, cts);
+    }
+
+    private void CancelPauseWhenUnwatched()
+    {
+        lock (_unwatchedGate)
+        {
+            _unwatched?.Cancel();
+            _unwatched = null;
+        }
+    }
+
+    private async Task PauseAfterAsync(TimeSpan grace, CancellationTokenSource cts)
+    {
+        try
+        {
+            await Task.Delay(grace, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return; // somebody connected in time
+        }
+        finally
+        {
+            lock (_unwatchedGate)
+            {
+                if (ReferenceEquals(_unwatched, cts)) _unwatched = null;
+            }
+            cts.Dispose();
+        }
+
+        if (!_clients.IsEmpty || !loop.Current.Running) return;
+        try
+        {
+            await loop.PauseAsync();
+            logger.LogInformation("Paused the simulation at generation {Generation}: no client for {Grace}", loop.Current.Generation, grace);
+        }
+        catch (InvalidOperationException)
+        {
+            // The loop has stopped (application shutdown).
+        }
     }
 
     public Viewport Recentre(string connectionId) =>

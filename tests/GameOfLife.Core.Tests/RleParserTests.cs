@@ -116,4 +116,22 @@ public class RleParserTests
         Assert.Empty(p.Cells);
         Assert.Equal(0, p.Width);
     }
+
+    [Fact]
+    public void Rejects_a_pattern_with_more_live_cells_than_allowed()
+    {
+        var ex = Assert.Throws<FormatException>(() => RleParser.Parse("x = 10, y = 1\n10o!", maxPopulation: 9));
+
+        Assert.Contains("live cells", ex.Message);
+        Assert.Equal(10, RleParser.Parse("x = 10, y = 1\n10o!", maxPopulation: 10).Cells.Count);
+    }
+
+    [Fact]
+    public void The_default_cap_stops_a_small_file_from_describing_a_huge_population()
+    {
+        // Two runs of the largest allowed length: 2 million cells from 20 bytes.
+        var text = $"x = 1, y = 2\n{Pattern.MaxDimension}o${Pattern.MaxDimension}o!";
+
+        Assert.Throws<FormatException>(() => RleParser.Parse(text));
+    }
 }

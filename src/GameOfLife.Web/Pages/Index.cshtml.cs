@@ -2,12 +2,14 @@ using System.Globalization;
 using System.Text;
 using GameOfLife.Core;
 using GameOfLife.Core.Rle;
+using GameOfLife.Web.Simulation;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Options;
 
 namespace GameOfLife.Web.Pages;
 
-public class IndexModel(SimulationLoop loop) : PageModel
+public class IndexModel(SimulationLoop loop, IOptions<GameOfLifeOptions> options) : PageModel
 {
     public const long MaxUploadBytes = 4 * 1024 * 1024;
 
@@ -16,9 +18,9 @@ public class IndexModel(SimulationLoop loop) : PageModel
 
     public int DefaultGridSize => Viewport.DefaultSize;
     public int MinGridSize => Viewport.MinSize;
-    public int MaxGridSize => Viewport.MaxSize;
+    public int MaxGridSize => options.Value.MaxViewportSize;
     public int MinSpeed => SimulationLoop.MinGenerationsPerSecond;
-    public int MaxSpeed => SimulationLoop.MaxGenerationsPerSecond;
+    public int MaxSpeed => loop.SpeedLimit;
     public int CurrentSpeed => loop.Current.GenerationsPerSecond;
 
     public void OnGet()
@@ -42,7 +44,7 @@ public class IndexModel(SimulationLoop loop) : PageModel
         try
         {
             using var reader = new StreamReader(file.OpenReadStream(), Encoding.UTF8);
-            var pattern = RleParser.Parse(await reader.ReadToEndAsync());
+            var pattern = RleParser.Parse(await reader.ReadToEndAsync(), options.Value.MaxPopulation);
             await loop.LoadAsync(pattern);
             Message = $"Loaded {pattern.Name ?? Path.GetFileName(file.FileName)} ({pattern.Cells.Count} cells). Press Start to run it.";
         }

@@ -19,15 +19,22 @@ public static partial class RleParser
         "B3/S23", "23/3", "S23/B3",
     };
 
-    public static Pattern Parse(string text)
+    /// <param name="maxPopulation">
+    /// Rejects the pattern with a <see cref="FormatException"/> once it has more live cells than this.
+    /// Server-owned files can pass <see cref="int.MaxValue"/>; anything a user sent should keep the default or lower.
+    /// </param>
+    public static Pattern Parse(string text, int maxPopulation = Pattern.MaxPopulation)
     {
         ArgumentNullException.ThrowIfNull(text);
         using var reader = new StringReader(text);
-        return Parse(reader);
+        return Parse(reader, maxPopulation);
     }
 
-    public static Pattern Parse(TextReader reader)
+    /// <inheritdoc cref="Parse(string, int)"/>
+    public static Pattern Parse(TextReader reader, int maxPopulation = Pattern.MaxPopulation)
     {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxPopulation);
+
         string? name = null;
         Cell? origin = null;
         var comments = new List<string>();
@@ -110,6 +117,9 @@ public static partial class RleParser
                 // (multi-state files use A..X), matching common Life software.
                 if (x + count > Pattern.MaxDimension || y >= Pattern.MaxDimension)
                     throw new FormatException($"Line {lineNumber}: pattern exceeds the {Pattern.MaxDimension} size limit.");
+                // Checked before the cells exist, so a hostile file cannot make the list itself the problem.
+                if (cells.Count + count > maxPopulation)
+                    throw new FormatException($"Line {lineNumber}: the pattern has more than {maxPopulation:N0} live cells.");
                 for (var i = 0; i < count; i++) cells.Add((x + i, y));
                 x += count;
             }

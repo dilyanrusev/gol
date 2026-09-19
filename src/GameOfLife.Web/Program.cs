@@ -2,8 +2,32 @@ using System.Text.Json.Serialization.Metadata;
 using GameOfLife.Core;
 using GameOfLife.Web.Hubs;
 using GameOfLife.Web.Simulation;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddOptions<GameOfLifeOptions>()
+    .Bind(builder.Configuration.GetSection(GameOfLifeOptions.Section))
+    .Validate(o => o.IsValid(out _), "The GameOfLife configuration section is invalid.")
+    .ValidateOnStart();
+
+// The state directory holds the saved universe and the data-protection key ring (anti-forgery,
+// TempData), so both survive a restart. If it cannot be created the app still runs; the keys then
+// live wherever the framework puts them by default and the universe stays in memory.
+var stateDirectory = builder.Configuration.GetSection(GameOfLifeOptions.Section).Get<GameOfLifeOptions>()?.ResolveStateDirectory()
+    ?? GameOfLifeOptions.DefaultStateDirectory();
+var keyDirectory = Path.Combine(stateDirectory, "keys");
+Exception? stateDirectoryError = null;
+try
+{
+    Directory.CreateDirectory(keyDirectory);
+    builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(keyDirectory));
+}
+catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+{
+    stateDirectoryError = ex;
+}
 
 builder.Services.AddRazorPages();
 // Frames are serialised through compile-time metadata (see WireJsonContext). Touching the resolver
@@ -17,16 +41,25 @@ builder.Services.AddSignalR().AddJsonProtocol(options =>
 });
 
 builder.Services.AddSingleton<ClientViewports>();
+builder.Services.AddSingleton<UniverseStore>();
 // The loop is the single writer of the universe. Its observer fans each snapshot out to the
-// connected clients. GameOfLife:EditTimeoutSeconds bounds how long an idle edit session may hold it.
-// The service is resolved lazily inside the lambda to avoid a construction cycle.
-builder.Services.AddSingleton(sp => new SimulationLoop(
-    (snapshot, ct) => sp.GetRequiredService<ClientViewports>().BroadcastAsync(snapshot, ct),
-    editTimeout: TimeSpan.FromSeconds(builder.Configuration.GetValue(
-        "GameOfLife:EditTimeoutSeconds", SimulationLoop.DefaultEditTimeout.TotalSeconds))));
+// connected clients. The service is resolved lazily inside the lambda to avoid a construction cycle.
+builder.Services.AddSingleton(sp =>
+{
+    var options = sp.GetRequiredService<IOptions<GameOfLifeOptions>>().Value;
+    return new SimulationLoop(
+        (snapshot, ct) => sp.GetRequiredService<ClientViewports>().BroadcastAsync(snapshot, ct),
+        options.EditTimeout,
+        options.MaxGenerationsPerSecond);
+});
 builder.Services.AddHostedService<SimulationHostedService>();
 
 var app = builder.Build();
+
+if (stateDirectoryError is not null)
+    app.Logger.LogWarning(stateDirectoryError, "Could not create the state directory {Path}; nothing will persist across restarts", stateDirectory);
+else
+    app.Logger.LogInformation("State directory: {Path}", stateDirectory);
 
 if (!app.Environment.IsDevelopment())
 {

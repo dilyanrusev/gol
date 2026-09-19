@@ -18,8 +18,9 @@ step is incremental. While editing only the client, `npm run watch` rebuilds the
 (without type checking; run `npm run typecheck` or a `dotnet build` for that). Pass
 `-p:SkipClientBuild=true` to build the server alone (for example in a container without Node).
 
-The server seeds itself with `patterns/gosper_glider_gun.rle` (configurable through
-`GameOfLife:SeedFile`). Press **Start** in the browser to run it.
+On first start the server seeds itself with `patterns/gosper_glider_gun.rle`; afterwards it
+restores the universe it saved last time (see [Configuration](#configuration)). Press **Start** in
+the browser to run it. Once nobody has been connected for a minute the simulation pauses itself.
 
 While paused, one browser at a time can press **Edit cells** and flip cells by clicking them in
 its view. Everyone sees a sticky banner with a countdown: the session ends on Done (which
@@ -31,6 +32,24 @@ returns to them.
 Tests: `dotnet test`. The Web tests start the real server on Kestrel at a random port and drive it
 with the .NET SignalR client and with Playwright. They use the Chromium build bundled with the
 Playwright package, which the test fixture downloads on first run (about 150 MB, cached per user).
+
+## Configuration
+
+Everything lives in the `GameOfLife` section (`appsettings*.json`, or environment variables such
+as `GameOfLife__MaxGenerationsPerSecond`). The defaults suit a developer machine;
+`appsettings.Production.json` lowers the three limits for a small shared host such as a free-tier
+App Service, where CPU time and outbound bandwidth are metered per day.
+
+| Setting | Default | Production | What |
+| --- | --- | --- | --- |
+| `SeedFile` | `patterns/gosper_glider_gun.rle` | | Loaded when there is no saved universe. Relative to the content root. |
+| `StateDirectory` | `dilyanrusev/game-of-life` under the local application data folder (`~/.local/share` on Linux, `%LOCALAPPDATA%` on Windows) | | Holds `universe.rle` and the data-protection key ring (`keys/`), so the universe, anti-forgery tokens and TempData survive a restart. Created on demand; if it cannot be written the app runs without persistence and says so in the log. |
+| `SaveIntervalSeconds` | 60 | | How often the universe is saved while it changes; it is always saved at shutdown. The saved population reloads in place as the seed at generation 0. 0 disables the periodic save. |
+| `PauseWhenUnwatchedSeconds` | 60 | | Grace period after the last client disconnects before the simulation pauses itself, so a closed tab does not keep the server stepping for nobody while a page reload does not interrupt it. 0 never pauses. |
+| `EditTimeoutSeconds` | 300 | | Idle time after which an edit session ends on its own. |
+| `MaxGenerationsPerSecond` | 60 | 20 | Ceiling of the speed slider (1–60). |
+| `MaxViewportSize` | 500 | 200 | Largest grid a client may ask for, per side (5–500). The frame size grows with its square. |
+| `MaxPopulation` | 1 048 576 | 100 000 | Most live cells an uploaded or hand-written pattern may have. Run lengths let a few bytes of RLE describe billions of cells, so the 4 MB upload limit alone bounds nothing. The seed file and the saved universe are exempt. |
 
 ## Benchmarks
 
@@ -65,7 +84,11 @@ budgets that fail the build when a hot path starts allocating more.
   costs O(live cells). Unchecked `ulong` arithmetic gives torus wrapping for free.
 - **Single writer.** `SimulationLoop` owns the `Universe`. Every mutation (start, pause, step,
   reset, load, speed, edit) is a command posted to a channel and applied between generations. After each
-  change it publishes an immutable `UniverseSnapshot`.
+  change it publishes an immutable `UniverseSnapshot`. The hosted service restores the saved
+  universe or the seed file at start, saves the latest snapshot at the configured interval and at
+  shutdown (`UniverseStore`: written beside the file and swapped in, so a crash cannot leave a
+  truncated one), and `ClientViewports` pauses the loop once nobody has been connected for the
+  grace period.
 - **Only the canvas and one toolbar under normal conditions.** The strip above the canvas has a
   leading group of in-place controls (run/pause, step, reset, speed, then Edit cells) and a trailing
   group of everything that leaves the page or opens a panel (Load pattern…, Save .rle, then a

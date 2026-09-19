@@ -8,6 +8,13 @@ public sealed record Pattern
 {
     public const int MaxDimension = 1 << 20;
 
+    /// <summary>
+    /// The most live cells a parsed pattern may have unless the caller allows more. Run lengths let
+    /// a few hundred bytes of RLE describe billions of cells, so this bounds the memory an upload
+    /// can claim, not the file size.
+    /// </summary>
+    public const int MaxPopulation = 1 << 20;
+
     public required int Width { get; init; }
     public required int Height { get; init; }
     public required IReadOnlyList<(int X, int Y)> Cells { get; init; }
