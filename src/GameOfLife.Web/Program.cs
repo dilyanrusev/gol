@@ -33,12 +33,16 @@ builder.Services.AddRazorPages();
 // Frames are serialised through compile-time metadata (see WireJsonContext). Touching the resolver
 // chain replaces the implicit reflection resolver, so it is added back explicitly for everything
 // else (hub method arguments such as the long deltas of Pan).
-builder.Services.AddSignalR().AddJsonProtocol(options =>
-{
-    var chain = options.PayloadSerializerOptions.TypeInfoResolverChain;
-    chain.Insert(0, WireJsonContext.Default);
-    if (!chain.OfType<DefaultJsonTypeInfoResolver>().Any()) chain.Add(new DefaultJsonTypeInfoResolver());
-});
+// The browser negotiates MessagePack: about a quarter smaller per frame than JSON, mostly because
+// the packed cells travel as bytes instead of base64. JSON stays for any other client.
+builder.Services.AddSignalR()
+    .AddJsonProtocol(options =>
+    {
+        var chain = options.PayloadSerializerOptions.TypeInfoResolverChain;
+        chain.Insert(0, WireJsonContext.Default);
+        if (!chain.OfType<DefaultJsonTypeInfoResolver>().Any()) chain.Add(new DefaultJsonTypeInfoResolver());
+    })
+    .AddMessagePackProtocol();
 
 builder.Services.AddSingleton<ClientViewports>();
 builder.Services.AddSingleton<UniverseStore>();

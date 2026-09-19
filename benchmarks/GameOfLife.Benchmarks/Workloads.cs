@@ -1,3 +1,4 @@
+using MessagePack;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using GameOfLife.Core;
@@ -55,10 +56,20 @@ public static class Workloads
         ulong Generation, int Population, bool Running, int GenerationsPerSecond, int Width, int Height, IReadOnlyList<int> Cells,
         bool Editing, bool EditingByMe, int EditRemainingMs, int EditTimeoutMs);
 
-    /// <summary>Mirrors GameOfLife.Web.Simulation.Frame: cells packed by CellsCodec into a string.</summary>
+    /// <summary>Mirrors GameOfLife.Web.Simulation.Frame: cells packed by CellsCodec into bytes, MessagePack keys as on the wire.</summary>
+    [MessagePackObject]
     public sealed record WireFrame(
-        ulong Generation, int Population, bool Running, int GenerationsPerSecond, int Width, int Height, string Cells,
-        bool Editing, bool EditingByMe, int EditRemainingMs, int EditTimeoutMs);
+        [property: Key("generation")] ulong Generation,
+        [property: Key("population")] int Population,
+        [property: Key("running")] bool Running,
+        [property: Key("generationsPerSecond")] int GenerationsPerSecond,
+        [property: Key("width")] int Width,
+        [property: Key("height")] int Height,
+        [property: Key("cells")] byte[] Cells,
+        [property: Key("editing")] bool Editing,
+        [property: Key("editingByMe")] bool EditingByMe,
+        [property: Key("editRemainingMs")] int EditRemainingMs,
+        [property: Key("editTimeoutMs")] int EditTimeoutMs);
 
     /// <summary>What SignalR's JSON protocol did with a frame before source generation: reflection-based camel-cased JSON.</summary>
     public static readonly JsonSerializerOptions WireJson = new()

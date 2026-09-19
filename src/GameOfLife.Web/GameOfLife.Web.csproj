@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <!-- Marker attributes for the TypeScript client generator (TypedSignalR.Client.TypeScript / Tapper). -->
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Protocols.MessagePack" Version="10.0.12" />
     <PackageReference Include="Tapper.Attributes" Version="1.14.0" />
     <PackageReference Include="TypedSignalR.Client.TypeScript.Attributes" Version="1.17.0" />
   </ItemGroup>
@@ -76,19 +77,12 @@
     <ClientSource Include="Scripts\**\*.ts;Scripts\**\*.tsx;Scripts\**\*.css;tsconfig.json;build.mjs;package.json" />
   </ItemGroup>
 
-  <Target Name="RestoreDotnetTools"
-          Condition="'$(ClientBuildEnabled)' == 'true'"
-          Inputs="$(RepoRoot).config\dotnet-tools.json"
-          Outputs="$(IntermediateOutputPath)dotnet-tools.restored">
+  <Target Name="RestoreDotnetTools" Condition="'$(ClientBuildEnabled)' == 'true'" Inputs="$(RepoRoot).config\dotnet-tools.json" Outputs="$(IntermediateOutputPath)dotnet-tools.restored">
     <Exec Command="dotnet tool restore" WorkingDirectory="$(RepoRoot)" />
     <Touch Files="$(IntermediateOutputPath)dotnet-tools.restored" AlwaysCreate="true" />
   </Target>
 
-  <Target Name="GenerateSignalRClient"
-          DependsOnTargets="RestoreDotnetTools"
-          Condition="'$(ClientBuildEnabled)' == 'true'"
-          Inputs="@(SignalRClientSource);$(MSBuildProjectFullPath)"
-          Outputs="@(SignalRClientOutput)">
+  <Target Name="GenerateSignalRClient" DependsOnTargets="RestoreDotnetTools" Condition="'$(ClientBuildEnabled)' == 'true'" Inputs="@(SignalRClientSource);$(MSBuildProjectFullPath)" Outputs="@(SignalRClientOutput)">
     <Message Importance="high" Text="Generating the TypeScript SignalR client into $(SignalRClientOutputDir)" />
     <!--
       The generator loads this project through MSBuildWorkspace, which is a full nested build of it.
@@ -96,32 +90,20 @@
       (and rewriting the static web assets manifests under a different configuration). Its build
       diagnostics are informational; only its exit code decides.
     -->
-    <Exec Command="dotnet dotnet-tsrts --project &quot;$(MSBuildProjectFullPath)&quot; --output &quot;$(SignalRClientOutputDir)&quot;"
-          WorkingDirectory="$(RepoRoot)"
-          EnvironmentVariables="SkipClientBuild=true"
-          IgnoreStandardErrorWarningFormat="true" />
+    <Exec Command="dotnet dotnet-tsrts --project &quot;$(MSBuildProjectFullPath)&quot; --output &quot;$(SignalRClientOutputDir)&quot; --serializer MessagePack" WorkingDirectory="$(RepoRoot)" EnvironmentVariables="SkipClientBuild=true" IgnoreStandardErrorWarningFormat="true" />
   </Target>
 
-  <Target Name="NpmInstall"
-          Condition="'$(ClientBuildEnabled)' == 'true'"
-          Inputs="package.json;package-lock.json"
-          Outputs="node_modules\.package-lock.json">
+  <Target Name="NpmInstall" Condition="'$(ClientBuildEnabled)' == 'true'" Inputs="package.json;package-lock.json" Outputs="node_modules\.package-lock.json">
     <Exec Command="npm ci" />
   </Target>
 
-  <Target Name="BuildClient"
-          DependsOnTargets="NpmInstall;GenerateSignalRClient"
-          Condition="'$(ClientBuildEnabled)' == 'true'"
-          Inputs="@(ClientSource)"
-          Outputs="wwwroot\dist\client-$(Configuration).stamp">
+  <Target Name="BuildClient" DependsOnTargets="NpmInstall;GenerateSignalRClient" Condition="'$(ClientBuildEnabled)' == 'true'" Inputs="@(ClientSource)" Outputs="wwwroot\dist\client-$(Configuration).stamp">
     <Message Importance="high" Text="Type checking and bundling the client into wwwroot/dist ($(ClientBuildScript))" />
     <Exec Command="npm run $(ClientBuildScript)" />
     <Touch Files="wwwroot\dist\client-$(Configuration).stamp" AlwaysCreate="true" />
   </Target>
 
-  <Target Name="DeclareClientAssets"
-          BeforeTargets="ResolveProjectStaticWebAssets"
-          DependsOnTargets="BuildClient">
+  <Target Name="DeclareClientAssets" BeforeTargets="ResolveProjectStaticWebAssets" DependsOnTargets="BuildClient">
     <ItemGroup>
       <Content Include="wwwroot\dist\**" Exclude="wwwroot\dist\**\*.map;wwwroot\dist\*.stamp" />
       <Content Include="wwwroot\dist\**\*.map" CopyToPublishDirectory="Never" />

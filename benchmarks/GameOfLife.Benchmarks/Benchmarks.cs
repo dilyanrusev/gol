@@ -1,3 +1,4 @@
+using MessagePack;
 using System.Text.Json;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
@@ -120,7 +121,8 @@ public class ViewportBenchmarks
 
 /// <summary>
 /// What one frame costs on the wire for a sparse and a dense view: the original index list through
-/// reflection JSON, the same through source generation, and the packed string (source generation).
+/// reflection JSON, the same through source generation, the packed cells through JSON (base64) and
+/// through MessagePack (bytes as they are, the protocol the browser uses).
 /// </summary>
 [MemoryDiagnoser]
 [SimpleJob(warmupCount: 2, iterationCount: 8)]
@@ -149,9 +151,12 @@ public class FrameBenchmarks
 
     [Benchmark]
     public byte[] SerializeJsonPacked() => JsonSerializer.SerializeToUtf8Bytes(_packedFrame, BenchJsonContext.Default.WireFrame);
+
+    [Benchmark]
+    public byte[] SerializeMessagePackPacked() => MessagePackSerializer.Serialize(_packedFrame);
 }
 
-/// <summary>Packing the cells: the encoder with a kept scratch buffer, so only the string is allocated.</summary>
+/// <summary>Packing the cells: the encoder with a kept scratch buffer, so only the result is allocated.</summary>
 [MemoryDiagnoser]
 [SimpleJob(warmupCount: 2, iterationCount: 8)]
 [MarkdownExporterAttribute.GitHub]
@@ -174,12 +179,12 @@ public class CodecBenchmarks
     }
 
     [Benchmark]
-    public string Encode() => CellsCodec.Encode(_indices, _size, _size, ref _scratch);
+    public byte[] Encode() => CellsCodec.Encode(_indices, _size, _size, ref _scratch);
 }
 
 /// <summary>
 /// One generation as the server experiences it with N connected clients: step, snapshot, and for
-/// each client a projection through its viewport plus JSON serialisation. Network excluded.
+/// each client a projection through its viewport plus MessagePack serialisation. Network excluded.
 /// <c>TickFlat</c> is the previous pass (flat snapshot, every client walks the population);
 /// <c>TickIndexed</c> is the current one (chunked snapshot, each client visits its chunks).
 /// </summary>
@@ -252,6 +257,6 @@ public class TickBenchmarks
         var viewport = _viewports[i];
         var cells = CellsCodec.Encode(_buffers[i].AsSpan(0, count), viewport.Width, viewport.Height, ref _scratch[i]);
         var frame = new WireFrame(generation, population, true, 10, viewport.Width, viewport.Height, cells, false, false, 0, 300_000);
-        return JsonSerializer.SerializeToUtf8Bytes(frame, BenchJsonContext.Default.WireFrame).Length;
+        return MessagePackSerializer.Serialize(frame).Length;
     }
 }

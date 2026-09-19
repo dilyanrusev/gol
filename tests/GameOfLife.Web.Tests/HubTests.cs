@@ -1,6 +1,7 @@
 using System.Threading.Channels;
 using GameOfLife.Core;
 using GameOfLife.Web.Simulation;
+using MessagePack;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.DependencyInjection;
@@ -275,5 +276,45 @@ public sealed class HubTests(WebAppFixture app) : IAsyncLifetime
         var a = await NextAsync(frames, f => f.Generation > back.Generation);
         var b = await NextAsync(frames, f => f.Generation > a.Generation);
         Assert.NotEqual(a.Cells, b.Cells);
+    }
+
+    /// <summary>The browser's protocol. The other tests use JSON, which stays supported; the frames must agree.</summary>
+    [Fact]
+    public async Task A_MessagePack_client_sees_the_same_frames_as_a_JSON_client()
+    {
+        var connection = new HubConnectionBuilder().WithUrl(app.HubUrl).AddMessagePackProtocol().Build();
+        _connections.Add(connection);
+        var frames = Channel.CreateUnbounded<Frame>();
+        connection.On<Frame>(nameof(Hubs.ILifeClient.ReceiveFrame), f => frames.Writer.TryWrite(f));
+        await connection.StartAsync();
+        var (json, _) = await ConnectAsync();
+
+        var pushed = await NextAsync(frames.Reader);
+        var viaMessagePack = await connection.InvokeAsync<Frame>(nameof(Hubs.ILifeHub.Refresh));
+        var viaJson = await json.InvokeAsync<Frame>(nameof(Hubs.ILifeHub.Refresh));
+
+        Assert.Equal(viaJson, viaMessagePack);
+        Assert.Equal(viaJson, pushed);
+        Assert.Equal(3, CellsCodec.Decode(viaMessagePack.Cells, viaMessagePack.Width, viaMessagePack.Height).Length);
+
+        // Long arguments and the frame the method returns travel through MessagePack too.
+        var panned = await connection.InvokeAsync<Frame>(nameof(Hubs.ILifeHub.Pan), 1L << 40, -(1L << 40));
+        Assert.Empty(CellsCodec.Decode(panned.Cells, panned.Width, panned.Height));
+    }
+
+    /// <summary>What the switch buys, measured: the same frame through both protocols' serialisers.</summary>
+    [Fact]
+    public void A_frame_is_smaller_in_MessagePack_than_in_JSON()
+    {
+        var cells = Enumerable.Range(0, 150 * 150).Where(i => i % 3 == 0).ToArray(); // dense: a bitmap
+        var frame = new Frame(1234, 50_000, true, 10, 150, 150, CellsCodec.Encode(cells, 150, 150), false, false, 0, 300_000);
+
+        var json = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(frame, WireJsonContext.Default.Frame);
+        var messagePack = MessagePackSerializer.Serialize(frame);
+
+        Assert.Equal(frame, MessagePackSerializer.Deserialize<Frame>(messagePack));
+        // The bitmap is 2 813 bytes: base64 makes it 3 752 in JSON; MessagePack adds a three-byte bin header.
+        Assert.InRange(messagePack.Length, 2_813 + 3, 2_813 + 3 + 200);
+        Assert.True(messagePack.Length < json.Length * 0.8, $"MessagePack {messagePack.Length} B vs JSON {json.Length} B");
     }
 }

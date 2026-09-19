@@ -126,9 +126,11 @@ budgets that fail the build when a hot path starts allocating more.
   starts centred on the seed pattern and only sends relative changes (`Pan(dx, dy)`, `Resize`,
   `Recentre`). Deltas outside JavaScript's safe-integer range are rejected; grid size is clamped to
   5–500 cells per side. Each tick the server sends every client only the cells inside its viewport,
-  packed by `CellsCodec` into a short string: delta-coded indices for sparse views, a bitmap for
-  dense ones, chosen per frame. Each connection keeps its projection and encoding buffers, so a
-  broadcast allocates only the string; frames returned from hub methods allocate their own.
+  packed by `CellsCodec` into a few bytes: a tag, then delta-coded indices for sparse views or a
+  bitmap for dense ones, chosen per frame. The browser talks MessagePack, so those bytes travel
+  as they are (JSON stays available for other clients and base64-encodes them). Each connection
+  keeps its projection and encoding buffers, so a broadcast allocates only the result; frames
+  returned from hub methods allocate their own.
   A hidden tab (Page Visibility API) tells the hub so and receives no frames until it is shown
   again, when the acknowledgement carries the current frame; the simulation itself runs on.
   A client whose view did not change since its last frame (a still life, empty space; same

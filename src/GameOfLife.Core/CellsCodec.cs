@@ -3,62 +3,57 @@ using System.Buffers;
 namespace GameOfLife.Core;
 
 /// <summary>
-/// Packs a viewport's visible cells into a short string for the wire: one tag character followed
-/// by base64. Sparse views use <c>I</c>, the sorted indices delta-coded as LEB128 varints (about
-/// one byte per cell when cells are close together); dense views use <c>B</c>, a bitmap with one
-/// bit per viewport cell, row-major, least significant bit first (a fixed width × height / 8
-/// bytes whatever the population). The choice is made per frame, so the payload is bounded by the
-/// bitmap in the worst case and near-minimal in the common, mostly empty one.
+/// Packs a viewport's visible cells into a few bytes for the wire: one tag byte followed by the
+/// payload. Sparse views use <c>I</c>, the sorted indices delta-coded as LEB128 varints (about one
+/// byte per cell when cells are close together); dense views use <c>B</c>, a bitmap with one bit
+/// per viewport cell, row-major, least significant bit first (a fixed width × height / 8 bytes
+/// whatever the population). The choice is made per frame, so the payload is bounded by the bitmap
+/// in the worst case and near-minimal in the common, mostly empty one. MessagePack carries the
+/// bytes as they are; a JSON client sees them base64-encoded.
 /// </summary>
 public static class CellsCodec
 {
-    public const char IndicesTag = 'I';
-    public const char BitmapTag = 'B';
+    public const byte IndicesTag = (byte)'I';
+    public const byte BitmapTag = (byte)'B';
 
     /// <summary>The bitmap is used once at least one cell in this many is alive.</summary>
     public const int DenseThreshold = 12;
 
     /// <summary>
     /// Encodes <paramref name="indices"/> (sorted ascending, each in [0, width × height)) into a
-    /// string. <paramref name="scratch"/> holds the bytes before base64 and is grown when needed, so
-    /// a caller that keeps it allocates only the returned string.
+    /// new array: the tag byte, then the payload. <paramref name="scratch"/> holds the payload while
+    /// it is built and is grown when needed, so a caller that keeps it allocates only the result.
     /// </summary>
-    public static string Encode(ReadOnlySpan<int> indices, int width, int height, ref byte[] scratch)
+    public static byte[] Encode(ReadOnlySpan<int> indices, int width, int height, ref byte[] scratch)
     {
         var area = checked(width * height);
         var dense = (long)indices.Length * DenseThreshold >= area;
         var length = dense ? EncodeBitmap(indices, area, ref scratch) : EncodeIndices(indices, ref scratch);
-        var tag = dense ? BitmapTag : IndicesTag;
-        var bytes = new ReadOnlyMemory<byte>(scratch, 0, length);
-        return string.Create(1 + Base64Length(length), (tag, bytes), static (chars, state) =>
-        {
-            chars[0] = state.tag;
-            Convert.TryToBase64Chars(state.bytes.Span, chars[1..], out _);
-        });
+        var encoded = new byte[1 + length];
+        encoded[0] = dense ? BitmapTag : IndicesTag;
+        scratch.AsSpan(0, length).CopyTo(encoded.AsSpan(1));
+        return encoded;
     }
 
     /// <summary>Convenience for one-off frames: encodes with a temporary scratch buffer.</summary>
-    public static string Encode(ReadOnlySpan<int> indices, int width, int height)
+    public static byte[] Encode(ReadOnlySpan<int> indices, int width, int height)
     {
         var scratch = Array.Empty<byte>();
         return Encode(indices, width, height, ref scratch);
     }
 
-    /// <summary>Decodes a string produced by <see cref="Encode(ReadOnlySpan{int}, int, int, ref byte[])"/> back into sorted indices.</summary>
-    public static int[] Decode(string encoded, int width, int height)
+    /// <summary>Decodes bytes produced by <see cref="Encode(ReadOnlySpan{int}, int, int, ref byte[])"/> back into sorted indices.</summary>
+    public static int[] Decode(ReadOnlySpan<byte> encoded, int width, int height)
     {
-        ArgumentNullException.ThrowIfNull(encoded);
-        if (encoded.Length == 0) throw new FormatException("The encoded cells are empty; a tag character is required.");
-        var bytes = Convert.FromBase64String(encoded[1..]);
+        if (encoded.Length == 0) throw new FormatException("The encoded cells are empty; a tag byte is required.");
+        var payload = encoded[1..];
         return encoded[0] switch
         {
-            IndicesTag => DecodeIndices(bytes, checked(width * height)),
-            BitmapTag => DecodeBitmap(bytes, checked(width * height)),
-            var tag => throw new FormatException($"Unknown cell encoding '{tag}'."),
+            IndicesTag => DecodeIndices(payload, checked(width * height)),
+            BitmapTag => DecodeBitmap(payload, checked(width * height)),
+            var tag => throw new FormatException($"Unknown cell encoding '{(char)tag}'."),
         };
     }
-
-    private static int Base64Length(int bytes) => (bytes + 2) / 3 * 4;
 
     private static void Ensure(ref byte[] scratch, int length)
     {
@@ -98,7 +93,7 @@ public static class CellsCodec
         return length;
     }
 
-    private static int[] DecodeIndices(byte[] bytes, int area)
+    private static int[] DecodeIndices(ReadOnlySpan<byte> bytes, int area)
     {
         var writer = new ArrayBufferWriter<int>();
         var previous = 0;
@@ -124,7 +119,7 @@ public static class CellsCodec
         return writer.WrittenSpan.ToArray();
     }
 
-    private static int[] DecodeBitmap(byte[] bytes, int area)
+    private static int[] DecodeBitmap(ReadOnlySpan<byte> bytes, int area)
     {
         if (bytes.Length != (area + 7) / 8) throw new FormatException("Bitmap length does not match the viewport.");
         var writer = new ArrayBufferWriter<int>();

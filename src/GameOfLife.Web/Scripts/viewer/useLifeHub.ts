@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { HubConnectionBuilder } from "@microsoft/signalr";
+import { MessagePackHubProtocol } from "@microsoft/signalr-protocol-msgpack";
 // Generated from the server's ILifeHub / ILifeClient / Frame by the build (see GameOfLife.Web.csproj).
 import { getHubProxyFactory, getReceiverRegister } from "../generated/TypedSignalR.Client/index";
 import type { ILifeHub } from "../generated/TypedSignalR.Client/GameOfLife.Web.Hubs";
@@ -82,7 +83,12 @@ export function useLifeHub(): LifeHub {
   }, [applyFrame, notify]);
 
   useEffect(() => {
-    const connection = new HubConnectionBuilder().withUrl("/hubs/life").withAutomaticReconnect().build();
+    // MessagePack: the cells arrive as bytes rather than base64, and the envelope is smaller.
+    const connection = new HubConnectionBuilder()
+      .withUrl("/hubs/life")
+      .withHubProtocol(new MessagePackHubProtocol())
+      .withAutomaticReconnect()
+      .build();
     const hub = getHubProxyFactory("ILifeHub").createHubProxy(connection);
     const receiver = getReceiverRegister("ILifeClient").register(connection, {
       receiveFrame: async (f) => applyFrame(f),

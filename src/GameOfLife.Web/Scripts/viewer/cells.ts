@@ -1,25 +1,24 @@
+const INDICES_TAG = 0x49; // "I"
+const BITMAP_TAG = 0x42; // "B"
+
+/** What the server sends for a view with no live cells: the indices tag and nothing after it. */
+export const EMPTY_CELLS: Uint8Array = new Uint8Array([INDICES_TAG]);
+
 /**
- * Decodes the packed cell string the server sends (see GameOfLife.Core.CellsCodec): a tag
- * character followed by base64. "I" is the sorted indices delta-coded as LEB128 varints, used for
- * sparse views; "B" is a bitmap with one bit per viewport cell, row-major, least significant bit
- * first, used for dense views. Both decode to ascending packed indices (y * width + x).
+ * Decodes the packed cells the server sends (see GameOfLife.Core.CellsCodec): a tag byte followed
+ * by the payload, delivered as-is by MessagePack. "I" is the sorted indices delta-coded as LEB128
+ * varints, used for sparse views; "B" is a bitmap with one bit per viewport cell, row-major, least
+ * significant bit first, used for dense views. Both decode to ascending packed indices (y * width + x).
  */
-export function decodeCells(encoded: string, width: number, height: number): number[] {
+export function decodeCells(encoded: Uint8Array, width: number, height: number): number[] {
   if (encoded.length === 0) throw new Error("The encoded cells are empty.");
-  const bytes = fromBase64(encoded.slice(1));
+  const bytes = encoded.subarray(1);
   const area = width * height;
   switch (encoded[0]) {
-    case "I": return decodeIndices(bytes, area);
-    case "B": return decodeBitmap(bytes, area);
-    default: throw new Error(`Unknown cell encoding '${encoded[0]}'.`);
+    case INDICES_TAG: return decodeIndices(bytes, area);
+    case BITMAP_TAG: return decodeBitmap(bytes, area);
+    default: throw new Error(`Unknown cell encoding ${encoded[0]}.`);
   }
-}
-
-function fromBase64(text: string): Uint8Array {
-  const binary = atob(text);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
 }
 
 function decodeIndices(bytes: Uint8Array, area: number): number[] {

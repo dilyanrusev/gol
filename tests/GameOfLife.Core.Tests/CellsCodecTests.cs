@@ -11,7 +11,7 @@ public class CellsCodecTests
     public void An_empty_view_is_the_indices_tag_alone()
     {
         var encoded = CellsCodec.Encode([], 100, 100);
-        Assert.Equal("I", encoded);
+        Assert.Equal(new[] { CellsCodec.IndicesTag }, encoded);
         Assert.Empty(CellsCodec.Decode(encoded, 100, 100));
     }
 
@@ -24,8 +24,8 @@ public class CellsCodecTests
 
         Assert.Equal(CellsCodec.IndicesTag, encoded[0]);
         Assert.Equal(cells, CellsCodec.Decode(encoded, 100, 100));
-        // Six indices, two of them with gaps over 127: eight varint bytes, eleven base64 chars plus the tag.
-        Assert.Equal(1 + 12, encoded.Length);
+        // Six indices, two of them with gaps over 127: eight varint bytes plus the tag.
+        Assert.Equal(1 + 8, encoded.Length);
     }
 
     [Fact]
@@ -38,7 +38,7 @@ public class CellsCodecTests
 
         Assert.Equal(CellsCodec.BitmapTag, encoded[0]);
         Assert.Equal(cells, CellsCodec.Decode(encoded, 500, 500));
-        Assert.Equal(1 + (31_250 + 2) / 3 * 4, encoded.Length); // 250 000 bits, base64
+        Assert.Equal(1 + 31_250, encoded.Length); // 250 000 bits
     }
 
     [Fact]
@@ -65,7 +65,7 @@ public class CellsCodecTests
     }
 
     [Fact]
-    public void A_kept_scratch_buffer_makes_encoding_allocate_only_the_string()
+    public void A_kept_scratch_buffer_makes_encoding_allocate_only_the_result()
     {
         var random = new Random(3);
         var cells = Sorted(Enumerable.Range(0, 250_000).Where(_ => random.Next(3) == 0));
@@ -77,16 +77,16 @@ public class CellsCodecTests
         var bytes = GC.GetAllocatedBytesForCurrentThread() - before;
 
         Assert.Equal(warm, encoded);
-        var stringBytes = 2L * encoded.Length + 32;
-        Assert.True(bytes <= stringBytes, $"encoding allocated {bytes} bytes; the string alone is about {stringBytes}");
+        var resultBytes = encoded.Length + 32L;
+        Assert.True(bytes <= resultBytes, $"encoding allocated {bytes} bytes; the result alone is about {resultBytes}");
     }
 
     [Theory]
-    [InlineData("")]
-    [InlineData("X")]
-    [InlineData("Igw")] // a varint that never ends
-    [InlineData("BAA")] // a bitmap of the wrong length for 3 x 3
-    public void Malformed_input_is_rejected(string encoded)
+    [InlineData(new byte[0])]
+    [InlineData(new byte[] { (byte)'X' })]
+    [InlineData(new byte[] { (byte)'I', 0x83 })] // a varint that never ends
+    [InlineData(new byte[] { (byte)'B', 0x00 })] // a bitmap of the wrong length for 3 x 3
+    public void Malformed_input_is_rejected(byte[] encoded)
     {
         Assert.ThrowsAny<FormatException>(() => CellsCodec.Decode(encoded, 3, 3));
     }

@@ -34,7 +34,7 @@ public sealed class WireJsonTests(WebAppFixture app)
         var expected = JsonSerializer.Serialize(Sample, reflection);
 
         Assert.Equal(expected, generated);
-        Assert.Contains("\"cells\":\"I", generated);
+        Assert.Contains("\"cells\":\"" + Convert.ToBase64String(Sample.Cells), generated); // byte[] is base64 in JSON
         Assert.Equal(Sample, JsonSerializer.Deserialize(Encoding.UTF8.GetBytes(generated), WireJsonContext.Default.Frame));
     }
 }

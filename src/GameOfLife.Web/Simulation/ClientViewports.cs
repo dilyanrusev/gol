@@ -187,7 +187,7 @@ public sealed class ClientViewports(
     public Frame BuildFrame(string connectionId, Viewport viewport, UniverseSnapshot snapshot) =>
         BuildFrame(connectionId, viewport, snapshot, CellsCodec.Encode(snapshot.Index.Project(viewport), viewport.Width, viewport.Height));
 
-    private Frame BuildFrame(string connectionId, Viewport viewport, UniverseSnapshot snapshot, string cells)
+    private Frame BuildFrame(string connectionId, Viewport viewport, UniverseSnapshot snapshot, byte[] cells)
     {
         var edit = snapshot.Edit;
         return new Frame(

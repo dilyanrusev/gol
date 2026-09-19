@@ -16,8 +16,8 @@ export type Frame = {
     width: number;
     /** Transpiled from int */
     height: number;
-    /** Transpiled from string */
-    cells: string;
+    /** Transpiled from byte[] */
+    cells: Uint8Array;
     /** Transpiled from bool */
     editing: boolean;
     /** Transpiled from bool */

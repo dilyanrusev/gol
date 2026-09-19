@@ -7,7 +7,7 @@ import { Download, QuestionCircle, Upload } from "react-bootstrap-icons";
 import type { Frame } from "../generated/GameOfLife.Web.Simulation";
 import { useStoredFlag } from "../shared/useStoredFlag";
 import { CanvasHud } from "./CanvasHud";
-import { decodeCells } from "./cells";
+import { decodeCells, EMPTY_CELLS } from "./cells";
 import { CanvasOverlay } from "./CanvasOverlay";
 import { EditBanner } from "./EditBanner";
 import { GESTURE_HINT_KEY, GestureHint } from "./GestureHint";
@@ -83,7 +83,7 @@ export function Viewer() {
   // Until the server has spoken the canvas shows an empty default-sized grid; nothing trusts it as state.
   const view: Frame = frame ?? {
     generation: 0, population: 0, running: false, generationsPerSecond: config.currentSpeed,
-    width: config.defaultGridSize, height: config.defaultGridSize, cells: "I",
+    width: config.defaultGridSize, height: config.defaultGridSize, cells: EMPTY_CELLS,
     editing: false, editingByMe: false, editRemainingMs: 0, editTimeoutMs: 0,
   };
 

@@ -813,7 +813,8 @@ previous test's connections to be gone. README design bullet added.
 
 > commit
 
-Result: `2e7c0ae` — stop sending frames to hidden tabs (this entry is amended into it).
+Result: the commit "stop sending frames to hidden tabs" (this entry is amended into it, so it cannot
+name the hash).
 
 ### 52. MessagePack?
 
@@ -853,3 +854,28 @@ panned off the pattern gets progress until it recentres), one browser test (the 
 moving on a still life). README design bullet. One earlier browser test flaked once as the first
 test of a run (a frame delayed by the server's warm-up landed after its fixed settle); it now waits
 for the counter to stop moving instead.
+
+### 54. Commit, then MessagePack
+
+> commit and start working on MessagePack
+
+Result: `7001f82` — send progress instead of a frame when a client's view did not change. Then the
+switch: `CellsCodec` packs into bytes (a tag byte, then the payload) instead of a base64 string, and
+`Frame.Cells` is a `byte[]` — System.Text.Json base64-encodes it, so the JSON protocol keeps working
+from the same type while MessagePack carries the bytes as they are. `Frame` is `[MessagePackObject]`
+with camelCase string `[Key]`s (the wire names) and compares cells byte for byte, so record
+equality still means "the same frame". `AddMessagePackProtocol()` on the server (JSON stays for
+other clients); the TypeScript generator runs with `--serializer MessagePack`, which types `cells`
+as `Uint8Array`; the page connects with `MessagePackHubProtocol` and `cells.ts` decodes the bytes
+directly. The first package versions restored (`Protocols.MessagePack` 10.0.0 → `MessagePack`
+2.5.187) carried known vulnerabilities; bumped to 10.0.12 / 3.1.9, restore clean. Tests: codec
+tests on bytes; a MessagePack .NET client sees the same frames as a JSON client (push, `Refresh`,
+a `Pan` with `long` deltas); a dense 150 × 150 frame round-trips through MessagePack and is under
+80 % of its JSON size (≈2.95 KB vs ≈3.97 KB); the frame benchmark gains a MessagePack row and the
+tick benchmark serialises with it. Cost on the cold load: `viewer.js` 51 → 59 KB gzipped.
+
+### 55. Commit
+
+> commit
+
+Result: the commit "frames travel as MessagePack, cells as bytes" (this entry is amended into it).
