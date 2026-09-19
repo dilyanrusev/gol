@@ -814,3 +814,42 @@ previous test's connections to be gone. README design bullet added.
 > commit
 
 Result: `2e7c0ae` — stop sending frames to hidden tabs (this entry is amended into it).
+
+### 52. MessagePack?
+
+> How much work would it be to switch to MessagePack? It will further save bandwidth, and it is the
+> last easy win I can think of
+
+Estimate given: about half a day, well bounded. The gain is 20–25 % per frame — mostly from sending
+the packed cells as bytes instead of base64 (a quarter of the payload, and all that matters in the
+dense worst case), plus a leaner envelope (~215 → ~155 bytes with string keys). The array format
+(integer keys) would shrink the envelope to ~45 bytes but hands the browser arrays instead of
+objects, so string keys it would be. Cost: `@microsoft/signalr-protocol-msgpack` + `@msgpack/msgpack`
+on the cold load (about 10 KB compressed, repaid within a minute of viewing) and a `@microsoft/signalr`
+9 → 10 bump. Work: server package and `AddMessagePackProtocol` (JSON stays for negotiation),
+`Frame.Cells` as `byte[]` (System.Text.Json base64-encodes it, so both protocols work from one
+type), `CellsCodec` returning bytes, `[MessagePackObject]` + camelCase `[Key("…")]` on `Frame`,
+regenerate the TypeScript with `--serializer MessagePack`, `cells.ts` on `Uint8Array`, the msgpack
+protocol on the connection; tests for the codec, wire JSON, hub frames and one both-protocols
+equality; a size row in the frame benchmark. Verified beforehand that `dotnet-tsrts` has
+`--serializer MessagePack` and honours attributes. Not the very last win: skipping a client's frame
+when its view's bytes did not change (only the generation counter moved) was mentioned as the
+remaining cheap one.
+
+### 53. Skip frames for an unchanged view
+
+> Do `skip a client's frame when its view didn't change` first
+
+Result: `ILifeClient.ReceiveProgress(generation, population)`. In the broadcast, each connection
+keeps a second projection buffer holding the indices of the last frame it was sent (the two swap
+after every full frame, so nothing is copied); when the fresh projection, the viewport and every
+frame field but the counters match, the client gets the two counters instead of a frame — a few
+dozen bytes with nothing to decode. Only broadcast frames are tracked; a frame returned from a hub
+method (pan, resize, refresh, visibility) means the next broadcast sends a full frame once more,
+and a failed send resets the tracking. The page merges progress into its current frame and keys
+the decoded cells on the cells string, so a progress message redraws without re-decoding. Tests:
+two hub tests (a still life gets one frame on start, then progress, then a frame on pause; a view
+panned off the pattern gets progress until it recentres), one browser test (the counters keep
+moving on a still life). README design bullet. One earlier browser test flaked once as the first
+test of a run (a frame delayed by the server's warm-up landed after its fixed settle); it now waits
+for the counter to stop moving instead.

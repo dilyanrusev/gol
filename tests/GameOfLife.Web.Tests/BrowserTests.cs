@@ -1,3 +1,4 @@
+using GameOfLife.Core;
 using Microsoft.Playwright;
 using static Microsoft.Playwright.Assertions;
 
@@ -98,5 +99,24 @@ public sealed class BrowserTests(WebAppFixture app) : IAsyncLifetime
         await Expect(page.Locator("#status-running")).ToHaveTextAsync("–");
         await Expect(page.Locator("#btn-run")).ToBeDisabledAsync();
         await Expect(page.Locator("#speed")).ToBeDisabledAsync();
+    }
+
+    [Fact]
+    public async Task The_counters_keep_moving_on_a_still_life()
+    {
+        // A block never changes, so the server sends this page progress messages, not frames.
+        await app.Loop.LoadAsync(Pattern.FromCells([(0, 0), (1, 0), (0, 1), (1, 1)], "Block"));
+        var page = await OpenAsync();
+        await Expect(page.Locator("#status-population")).ToHaveTextAsync("4");
+
+        await page.ClickAsync("#btn-run");
+        await Expect(page.Locator("#status-running")).ToHaveTextAsync("running");
+        await Expect(page.Locator("#status-generation")).Not.ToHaveTextAsync("0");
+        var seen = await page.Locator("#status-generation").InnerTextAsync();
+        await Expect(page.Locator("#status-generation")).Not.ToHaveTextAsync(seen);
+        await Expect(page.Locator("#status-population")).ToHaveTextAsync("4");
+
+        await page.ClickAsync("#btn-run");
+        await Expect(page.Locator("#status-running")).ToHaveTextAsync("paused");
     }
 }

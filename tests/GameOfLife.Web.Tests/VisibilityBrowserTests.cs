@@ -54,6 +54,20 @@ public sealed class VisibilityBrowserTests(WebAppFixture app) : IAsyncLifetime
     private static async Task<ulong> GenerationAsync(IPage page) =>
         ulong.Parse(await page.Locator("#status-generation").InnerTextAsync());
 
+    /// <summary>The HUD generation once two readings 300 ms apart agree.</summary>
+    private static async Task<ulong> FrozenGenerationAsync(IPage page)
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var last = await GenerationAsync(page);
+        while (true)
+        {
+            await Task.Delay(300, cts.Token);
+            var now = await GenerationAsync(page);
+            if (now == last) return now;
+            last = now;
+        }
+    }
+
     [Fact]
     public async Task A_hidden_tab_stops_receiving_frames_and_catches_up_when_shown()
     {
@@ -63,9 +77,9 @@ public sealed class VisibilityBrowserTests(WebAppFixture app) : IAsyncLifetime
         await Expect(page.Locator("#status-generation")).Not.ToHaveTextAsync("0");
 
         await SetHiddenAsync(page, true);
-        // The frame in flight when the tab went hidden may still land; settle first.
-        await Task.Delay(300);
-        var frozen = await GenerationAsync(page);
+        // Frames in flight when the tab went hidden may still land (the first ones of a run are slow
+        // while the server warms up); wait until the counter has stopped moving, then hold it there.
+        var frozen = await FrozenGenerationAsync(page);
         await Task.Delay(700);
         Assert.Equal(frozen, await GenerationAsync(page));
         Assert.True(app.Loop.Current.Generation > frozen, "the simulation should have run on without the tab");

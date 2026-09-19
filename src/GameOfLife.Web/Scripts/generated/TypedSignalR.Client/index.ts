@@ -150,11 +150,14 @@ class ILifeClient_Binder implements ReceiverRegister<ILifeClient> {
     public readonly register = (connection: HubConnection, receiver: ILifeClient): Disposable => {
 
         const __receiveFrame = (...args: [Frame]) => receiver.receiveFrame(...args);
+        const __receiveProgress = (...args: [number, number]) => receiver.receiveProgress(...args);
 
         connection.on("ReceiveFrame", __receiveFrame);
+        connection.on("ReceiveProgress", __receiveProgress);
 
         const methodList: ReceiverMethod[] = [
-            { methodName: "ReceiveFrame", method: __receiveFrame }
+            { methodName: "ReceiveFrame", method: __receiveFrame },
+            { methodName: "ReceiveProgress", method: __receiveProgress }
         ]
 
         return new ReceiverMethodSubscription(connection, methodList);

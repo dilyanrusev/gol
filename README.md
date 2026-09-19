@@ -131,6 +131,10 @@ budgets that fail the build when a hot path starts allocating more.
   broadcast allocates only the string; frames returned from hub methods allocate their own.
   A hidden tab (Page Visibility API) tells the hub so and receives no frames until it is shown
   again, when the acknowledgement carries the current frame; the simulation itself runs on.
+  A client whose view did not change since its last frame (a still life, empty space; same
+  viewport, same running and editing state) gets a `ReceiveProgress(generation, population)`
+  instead, a few dozen bytes with nothing to decode; the check compares the freshly projected
+  indices with the previous frame's in a second per-connection buffer that swaps with the first.
 - **Snapshots are grouped by chunk.** The loop copies the population out once per generation into
   a `SpatialIndex`: the cell array ordered by 64 x 64 chunk, with a table from chunk to range. It
   allocates the same one array as the flat copy plus the chunk table, takes about five times as

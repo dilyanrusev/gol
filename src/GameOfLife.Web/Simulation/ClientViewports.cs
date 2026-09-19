@@ -24,6 +24,15 @@ namespace GameOfLife.Web.Simulation;
 /// but receives no frames until it is visible again, when the hub hands it the current one.
 /// </para>
 /// <para>
+/// A visible client whose view did not change since the frame it was last sent (a still life, empty
+/// space; same viewport, same running and editing state) gets <see cref="ILifeClient.ReceiveProgress"/>
+/// with the new counters instead of a frame. The check compares the freshly projected indices with
+/// the previous frame's, kept in a second per-connection buffer that swaps places with the first, so
+/// it costs nothing but the comparison. Only frames sent by the broadcast are tracked; a frame the
+/// hub returned from a method changes the viewport or follows an edit, and the next broadcast then
+/// sends a full frame once more.
+/// </para>
+/// <para>
 /// This is also where the server learns that nobody is watching. When the last connection goes,
 /// a pause is scheduled <see cref="GameOfLifeOptions.PauseWhenUnwatchedSeconds"/> later and
 /// cancelled by the next connection, so a reload keeps the simulation running but a closed tab
@@ -42,6 +51,24 @@ public sealed class ClientViewports(
         public volatile bool Visible = true;
         public int[] Buffer = new int[256];
         public byte[] Scratch = [];
+
+        /// <summary>The last frame the broadcast sent, its viewport and its projected indices; null until there is one.</summary>
+        public Frame? Sent;
+        public Viewport SentViewport;
+        public int[] Previous = new int[256];
+        public int PreviousCount;
+
+        public bool SameCellsAsSent(Viewport viewport, int count) =>
+            Sent is not null && SentViewport == viewport && count == PreviousCount
+            && Buffer.AsSpan(0, count).SequenceEqual(Previous.AsSpan(0, count));
+
+        public void MarkSent(Frame frame, Viewport viewport, int count)
+        {
+            Sent = frame;
+            SentViewport = viewport;
+            PreviousCount = count;
+            (Buffer, Previous) = (Previous, Buffer); // the projection just sent becomes the one to compare with
+        }
     }
 
     private readonly ConcurrentDictionary<string, Client> _clients = new();
@@ -177,6 +204,24 @@ public sealed class ClientViewports(
             EditTimeoutMs: ToMilliseconds(edit?.Timeout ?? loop.EditTimeout));
     }
 
+    /// <summary>
+    /// Whether a frame built now for this client would differ from <paramref name="sent"/> only in
+    /// generation and population. Mirrors <see cref="BuildFrame(string, Viewport, UniverseSnapshot, string)"/>
+    /// field by field; keep the two in step.
+    /// </summary>
+    private bool SameHeaderAsSent(Frame sent, string connectionId, Viewport viewport, UniverseSnapshot snapshot)
+    {
+        var edit = snapshot.Edit;
+        return sent.Running == snapshot.Running
+            && sent.GenerationsPerSecond == snapshot.GenerationsPerSecond
+            && sent.Width == viewport.Width
+            && sent.Height == viewport.Height
+            && sent.Editing == (edit is not null)
+            && sent.EditingByMe == (edit?.Owner == connectionId)
+            && sent.EditRemainingMs == (edit is null ? 0 : ToMilliseconds(edit.Remaining))
+            && sent.EditTimeoutMs == ToMilliseconds(edit?.Timeout ?? loop.EditTimeout);
+    }
+
     private static int ToMilliseconds(TimeSpan span) => (int)Math.Min(int.MaxValue, Math.Ceiling(span.TotalMilliseconds));
 
     public async Task BroadcastAsync(UniverseSnapshot snapshot, CancellationToken cancellationToken)
@@ -189,9 +234,17 @@ public sealed class ClientViewports(
             if (!client.Visible) continue; // it asks for the current frame when it is shown again
             var viewport = client.Viewport;
             var count = snapshot.Index.Project(viewport, ref client.Buffer);
+
+            if (client.SameCellsAsSent(viewport, count) && SameHeaderAsSent(client.Sent!, connectionId, viewport, snapshot))
+            {
+                sends.Add(Tracked(hub.Clients.Client(connectionId).ReceiveProgress(snapshot.Generation, snapshot.Population, cancellationToken), client));
+                continue;
+            }
+
             var cells = CellsCodec.Encode(client.Buffer.AsSpan(0, count), viewport.Width, viewport.Height, ref client.Scratch);
             var frame = BuildFrame(connectionId, viewport, snapshot, cells);
-            sends.Add(hub.Clients.Client(connectionId).ReceiveFrame(frame, cancellationToken));
+            client.MarkSent(frame, viewport, count);
+            sends.Add(Tracked(hub.Clients.Client(connectionId).ReceiveFrame(frame, cancellationToken), client));
         }
 
         try
@@ -201,6 +254,20 @@ public sealed class ClientViewports(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogDebug(ex, "Failed to deliver a frame to at least one client");
+        }
+    }
+
+    /// <summary>A send that failed may not have reached the client, so the next broadcast to it is a full frame.</summary>
+    private static async Task Tracked(Task send, Client client)
+    {
+        try
+        {
+            await send;
+        }
+        catch
+        {
+            client.Sent = null;
+            throw;
         }
     }
 }

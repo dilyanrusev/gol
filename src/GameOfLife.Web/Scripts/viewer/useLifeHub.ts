@@ -84,7 +84,14 @@ export function useLifeHub(): LifeHub {
   useEffect(() => {
     const connection = new HubConnectionBuilder().withUrl("/hubs/life").withAutomaticReconnect().build();
     const hub = getHubProxyFactory("ILifeHub").createHubProxy(connection);
-    const receiver = getReceiverRegister("ILifeClient").register(connection, { receiveFrame: async (f) => applyFrame(f) });
+    const receiver = getReceiverRegister("ILifeClient").register(connection, {
+      receiveFrame: async (f) => applyFrame(f),
+      // Nothing in the view changed; the counters did. The cells string is kept, so nothing is re-decoded.
+      receiveProgress: async (generation, population) => {
+        const current = frameRef.current;
+        if (current) applyFrame({ ...current, generation, population });
+      },
+    });
     hubRef.current = hub;
     let disposed = false;
     // A reconnect gets a new connection, and with it the server drops our edit session; ask for it back.

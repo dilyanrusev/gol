@@ -104,5 +104,15 @@ export type ILifeClient = {
     * @returns Transpiled from System.Threading.Tasks.Task
     */
     receiveFrame(frame: Frame): Promise<void>;
+    /**
+    * Replaces  when nothing in the client's view changed (a still life,
+    * empty space) and neither did the running or editing state: only the counters moved on. A
+    * fraction of a frame's size, and no cells to decode.
+    * @param generation Transpiled from ulong
+    * @param population Transpiled from int
+    * @param cancellationToken Transpiled from System.Threading.CancellationToken
+    * @returns Transpiled from System.Threading.Tasks.Task
+    */
+    receiveProgress(generation: number, population: number): Promise<void>;
 }
 

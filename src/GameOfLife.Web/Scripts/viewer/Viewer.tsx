@@ -180,8 +180,9 @@ export function Viewer() {
 
   // What an empty-looking canvas cannot say for itself.
   // The wire carries the cells packed; everything on the page works on decoded indices.
-  const cells = useMemo(() => (frame ? decodeCells(frame.cells, frame.width, frame.height) : []), [frame]);
-  const bounds = useMemo(() => (frame && cells.length > 0 ? visibleBounds(cells, frame.width) : null), [frame, cells]);
+  // Keyed on the cells, not the frame: a progress message keeps the cells and only moves the counters.
+  const cells = useMemo(() => (frame ? decodeCells(frame.cells, frame.width, frame.height) : []), [frame?.cells, frame?.width, frame?.height]);
+  const bounds = useMemo(() => (frame && cells.length > 0 ? visibleBounds(cells, frame.width) : null), [frame?.width, cells]);
   const tiny = bounds !== null && frame !== null
     && bounds.spanX <= frame.width * TINY_PATTERN_SHARE && bounds.spanY <= frame.height * TINY_PATTERN_SHARE
     && Math.min(frame.width, frame.height) > config.minGridSize * 2;

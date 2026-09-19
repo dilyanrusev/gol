@@ -33,6 +33,21 @@ public sealed class HubTests(WebAppFixture app) : IAsyncLifetime
         return (connection, frames.Reader);
     }
 
+    /// <summary>A connected client that also records the progress messages it receives, in order.</summary>
+    private async Task<(HubConnection Connection, ChannelReader<Frame> Frames, ChannelReader<(ulong Generation, int Population)> Progress)> ConnectWithProgressAsync()
+    {
+        var connection = new HubConnectionBuilder().WithUrl(app.HubUrl).Build();
+        _connections.Add(connection);
+        var frames = Channel.CreateUnbounded<Frame>();
+        var progress = Channel.CreateUnbounded<(ulong, int)>();
+        connection.On<Frame>(nameof(Hubs.ILifeClient.ReceiveFrame), f => frames.Writer.TryWrite(f));
+        connection.On<ulong, int>(nameof(Hubs.ILifeClient.ReceiveProgress), (g, p) => progress.Writer.TryWrite((g, p)));
+        await connection.StartAsync();
+        return (connection, frames.Reader, progress.Reader);
+    }
+
+    private static readonly Pattern Block = Pattern.FromCells([(0, 0), (1, 0), (0, 1), (1, 1)], "Block");
+
     private static async Task<Frame> NextAsync(ChannelReader<Frame> frames, Func<Frame, bool>? until = null)
     {
         using var cts = new CancellationTokenSource(Timeout);
@@ -212,5 +227,53 @@ public sealed class HubTests(WebAppFixture app) : IAsyncLifetime
         Assert.True(frame.Running);
         Assert.False(hiddenFrames.TryRead(out _));
         Assert.Equal(1, app.Services.GetRequiredService<ClientViewports>().VisibleCount);
+    }
+
+    [Fact]
+    public async Task A_view_that_does_not_change_gets_progress_instead_of_frames()
+    {
+        await app.Loop.LoadAsync(Block); // a still life: the view is the same every generation
+        var (connection, frames, progress) = await ConnectWithProgressAsync();
+        await NextAsync(frames);
+
+        await connection.InvokeAsync(nameof(Hubs.ILifeHub.Start));
+
+        // Running changed, so the first broadcast is a full frame; after that only the counters move.
+        var running = await NextAsync(frames, f => f.Running);
+        using var cts = new CancellationTokenSource(Timeout);
+        var first = await progress.ReadAsync(cts.Token);
+        var second = await progress.ReadAsync(cts.Token);
+        Assert.True(first.Generation > running.Generation);
+        Assert.True(second.Generation > first.Generation);
+        Assert.Equal(4, second.Population);
+        Assert.False(frames.TryRead(out _));
+
+        // A state change is a frame again, even though the cells are still the same.
+        await connection.InvokeAsync(nameof(Hubs.ILifeHub.Pause));
+        var paused = await NextAsync(frames, f => !f.Running);
+        Assert.Equal(4, CellsCodec.Decode(paused.Cells, paused.Width, paused.Height).Length);
+    }
+
+    [Fact]
+    public async Task A_view_panned_off_the_pattern_gets_progress_until_it_comes_back()
+    {
+        var (connection, frames, progress) = await ConnectWithProgressAsync();
+        await NextAsync(frames);
+        var away = await connection.InvokeAsync<Frame>(nameof(Hubs.ILifeHub.Pan), 100_000L, 0L);
+        Assert.Empty(CellsCodec.Decode(away.Cells, away.Width, away.Height));
+
+        await connection.InvokeAsync(nameof(Hubs.ILifeHub.Start));
+        await NextAsync(frames, f => f.Running);
+        using var cts = new CancellationTokenSource(Timeout);
+        await progress.ReadAsync(cts.Token);
+        await progress.ReadAsync(cts.Token);
+        Assert.False(frames.TryRead(out _));
+
+        // Back over the blinker, which changes every generation: frames again.
+        var back = await connection.InvokeAsync<Frame>(nameof(Hubs.ILifeHub.Recentre));
+        Assert.Equal(3, CellsCodec.Decode(back.Cells, back.Width, back.Height).Length);
+        var a = await NextAsync(frames, f => f.Generation > back.Generation);
+        var b = await NextAsync(frames, f => f.Generation > a.Generation);
+        Assert.NotEqual(a.Cells, b.Cells);
     }
 }
