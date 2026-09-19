@@ -68,11 +68,19 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-// Plain static files (not MapStaticAssets) so that `npm run watch` output appears without a rebuild.
-app.UseStaticFiles();
+if (app.Environment.IsDevelopment())
+{
+    // `npm run watch` writes bundles (with new chunk names) that the build-time manifest below has
+    // never seen, so in development the files are served straight from wwwroot.
+    app.UseStaticFiles();
+}
 app.UseRouting();
 
-app.MapRazorPages();
+// The bundles as the build left them: fingerprinted, pre-compressed (gzip at build, gzip and
+// Brotli at publish), served with content negotiation and immutable caching, no CPU per request.
+// asp-append-version on the pages resolves to the fingerprinted URLs.
+app.MapStaticAssets();
+app.MapRazorPages().WithStaticAssets();
 app.MapHub<LifeHub>(LifeHub.Path);
 
 app.Run();

@@ -33,15 +33,30 @@
     <Content Include="..\..\patterns\*.rle" Link="patterns\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <PropertyGroup>
+    <!--
+      wwwroot/dist is declared by DeclareClientAssets below, after the client build, never by the
+      evaluation-time glob: chunk names carry content hashes, so the glob would list files the build
+      is about to delete and the static web assets step would fail on them.
+    -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);wwwroot\dist\**</DefaultItemExcludes>
+  </PropertyGroup>
+
   <!--
-    Client build, chained after Build:
+    Client build, run before the SDK collects static web assets (ResolveProjectStaticWebAssets), so
+    that the bundles are fingerprinted, pre-compressed and listed in the endpoint manifest that
+    MapStaticAssets serves from:
       1. RestoreDotnetTools    - dotnet tool restore from the repo's .config/dotnet-tools.json (pins the generator version).
       2. GenerateSignalRClient - emits Scripts/generated/*.ts from [Hub] ILifeHub, [Receiver] ILifeClient and
                                  [TranspilationSource] types. The output is committed; review it like any other diff.
       3. NpmInstall            - npm ci when package-lock.json changed.
-      4. BuildClient           - tsc (type check only) then esbuild into wwwroot/dist; minified for Release.
-    Every step is incremental, skipped for IDE design-time builds, and can be turned off with
-    dotnet build -p:SkipClientBuild=true (e.g. in a container without Node).
+      4. BuildClient           - tsc (type check only) then esbuild into wwwroot/dist; minified for Release. The
+                                 stamp that marks the output up to date lives in wwwroot/dist, which esbuild empties
+                                 first, so a build in the other configuration cannot pass as up to date.
+      5. DeclareClientAssets   - adds whatever wwwroot/dist now holds as Content (source maps build-only), whether
+                                 the bundle step ran, was up to date, or was turned off.
+    Steps 1-4 are incremental, skipped for IDE design-time builds, and can be turned off with
+    dotnet build -p:SkipClientBuild=true (e.g. in a container without Node, with wwwroot/dist prebuilt).
   -->
   <PropertyGroup>
     <RepoRoot>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '..', '..'))</RepoRoot>
@@ -70,14 +85,21 @@
   </Target>
 
   <Target Name="GenerateSignalRClient"
-          AfterTargets="Build"
           DependsOnTargets="RestoreDotnetTools"
           Condition="'$(ClientBuildEnabled)' == 'true'"
           Inputs="@(SignalRClientSource);$(MSBuildProjectFullPath)"
           Outputs="@(SignalRClientOutput)">
     <Message Importance="high" Text="Generating the TypeScript SignalR client into $(SignalRClientOutputDir)" />
+    <!--
+      The generator loads this project through MSBuildWorkspace, which is a full nested build of it.
+      SkipClientBuild in its environment keeps that nested build from running these client targets
+      (and rewriting the static web assets manifests under a different configuration). Its build
+      diagnostics are informational; only its exit code decides.
+    -->
     <Exec Command="dotnet dotnet-tsrts --project &quot;$(MSBuildProjectFullPath)&quot; --output &quot;$(SignalRClientOutputDir)&quot;"
-          WorkingDirectory="$(RepoRoot)" />
+          WorkingDirectory="$(RepoRoot)"
+          EnvironmentVariables="SkipClientBuild=true"
+          IgnoreStandardErrorWarningFormat="true" />
   </Target>
 
   <Target Name="NpmInstall"
@@ -88,14 +110,22 @@
   </Target>
 
   <Target Name="BuildClient"
-          AfterTargets="GenerateSignalRClient"
           DependsOnTargets="NpmInstall;GenerateSignalRClient"
           Condition="'$(ClientBuildEnabled)' == 'true'"
           Inputs="@(ClientSource)"
-          Outputs="$(IntermediateOutputPath)client-$(Configuration).stamp">
+          Outputs="wwwroot\dist\client-$(Configuration).stamp">
     <Message Importance="high" Text="Type checking and bundling the client into wwwroot/dist ($(ClientBuildScript))" />
     <Exec Command="npm run $(ClientBuildScript)" />
-    <Touch Files="$(IntermediateOutputPath)client-$(Configuration).stamp" AlwaysCreate="true" />
+    <Touch Files="wwwroot\dist\client-$(Configuration).stamp" AlwaysCreate="true" />
+  </Target>
+
+  <Target Name="DeclareClientAssets"
+          BeforeTargets="ResolveProjectStaticWebAssets"
+          DependsOnTargets="BuildClient">
+    <ItemGroup>
+      <Content Include="wwwroot\dist\**" Exclude="wwwroot\dist\**\*.map;wwwroot\dist\*.stamp" />
+      <Content Include="wwwroot\dist\**\*.map" CopyToPublishDirectory="Never" />
+    </ItemGroup>
   </Target>
 
 </Project>

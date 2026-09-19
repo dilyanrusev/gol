@@ -14,9 +14,14 @@ Node.js must be on the `PATH`. `dotnet build` (and therefore `run`, `watch`, `pu
 builds the client: it restores the TypeScript client generator from `.config/dotnet-tools.json`,
 regenerates `Scripts/generated/` from the hub interfaces, runs `npm ci` when the lock file changed,
 type-checks with `tsc` and bundles with esbuild into `wwwroot/dist` (minified for Release). Each
-step is incremental. While editing only the client, `npm run watch` rebuilds the bundles on change
-(without type checking; run `npm run typecheck` or a `dotnet build` for that). Pass
-`-p:SkipClientBuild=true` to build the server alone (for example in a container without Node).
+step is incremental. The bundles then go through the SDK's static web assets pipeline: fingerprinted
+file names, pre-compressed (gzip at build, gzip and Brotli at publish) and listed in the endpoint
+manifest that `MapStaticAssets` serves with content negotiation and immutable caching, so a cold
+page load is about 75 KB instead of 430 KB and costs the server no compression CPU. While editing
+only the client, `npm run watch` rebuilds the bundles on change (without type checking; run
+`npm run typecheck` or a `dotnet build` for that); in Development the files are served straight
+from `wwwroot`, so the manifest does not have to know about them. Pass `-p:SkipClientBuild=true`
+to build the server alone with a prebuilt `wwwroot/dist` (for example in a container without Node).
 
 On first start the server seeds itself with `patterns/gosper_glider_gun.rle`; afterwards it
 restores the universe it saved last time (see [Configuration](#configuration)). Press **Start** in
