@@ -788,3 +788,29 @@ row and design bullet. 132 Core and 67 Web tests green.
 
 Result: a "Prompt history" section in `CLAUDE.md` requiring this file to be brought up to date at
 the end of every turn without being asked, and entries 42–49 above.
+
+### 50. Commit, then hidden tabs
+
+> commit, and then implement the client regulation for inactive tabs with integration tests
+
+Result: `fe51205` — cap the frame rate independently of the generation rate. Then the second lever:
+`ILifeHub.SetVisibility(bool)` returns the current frame; `ClientViewports` keeps a `Visible` flag
+per connection and the broadcast skips hidden ones (`VisibleCount` for tests); `useLifeHub` listens
+to `visibilitychange`, reports the state after every (re)connect when the tab is already hidden, and
+applies the frame that comes back so a tab that is shown again is current at once. The simulation
+itself runs on; hidden tabs do not count as "unwatched". Tests: two hub tests (a hidden client gets
+no frames while the world moves and is brought up to date when shown; hiding one client leaves
+another untouched) and three Playwright tests that swap `document.hidden` / `visibilityState` and
+raise `visibilitychange` (a hidden tab's HUD freezes and catches up; other tabs keep updating; a tab
+opened in the background receives nothing until shown). Found on the way, all in the tests: the
+page's own hub calls (the height re-request shortly after the first frame) answer with the current
+frame whatever the visibility, so a test must let the view settle before it treats a frozen HUD as
+proof; "connected" shows before the hub has registered the connection; and the server notices a
+disposed connection a moment after the test does, so the fixture's `ResetAsync` now waits for the
+previous test's connections to be gone. README design bullet added.
+
+### 51. Commit
+
+> commit
+
+Result: `2e7c0ae` — stop sending frames to hidden tabs (this entry is amended into it).

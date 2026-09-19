@@ -20,6 +20,10 @@ namespace GameOfLife.Web.Simulation;
 /// serialised after the method has returned, with no way to know when, so they get their own arrays.
 /// </para>
 /// <para>
+/// A client may also say it is hidden (a background tab): it keeps its viewport and its connection
+/// but receives no frames until it is visible again, when the hub hands it the current one.
+/// </para>
+/// <para>
 /// This is also where the server learns that nobody is watching. When the last connection goes,
 /// a pause is scheduled <see cref="GameOfLifeOptions.PauseWhenUnwatchedSeconds"/> later and
 /// cancelled by the next connection, so a reload keeps the simulation running but a closed tab
@@ -35,6 +39,7 @@ public sealed class ClientViewports(
     private sealed class Client(Viewport viewport)
     {
         public Viewport Viewport = viewport;
+        public volatile bool Visible = true;
         public int[] Buffer = new int[256];
         public byte[] Scratch = [];
     }
@@ -46,6 +51,9 @@ public sealed class ClientViewports(
     private CancellationTokenSource? _unwatched;
 
     public int Count => _clients.Count;
+
+    /// <summary>Connections that currently receive frames.</summary>
+    public int VisibleCount => _clients.Values.Count(c => c.Visible);
 
     /// <summary>The largest grid this server hands out, per side.</summary>
     public int MaxSize => _maxSize;
@@ -74,6 +82,12 @@ public sealed class ClientViewports(
         var client = _clients.GetOrAdd(connectionId, _ => new Client(Default()));
         client.Viewport = change(client.Viewport);
         return client.Viewport;
+    }
+
+    /// <summary>Starts or stops the broadcast to one connection. Unknown connections are ignored.</summary>
+    public void SetVisible(string connectionId, bool visible)
+    {
+        if (_clients.TryGetValue(connectionId, out var client)) client.Visible = visible;
     }
 
     /// <summary>Changes the grid size, keeping the centre, within this server's limit rather than the engine's.</summary>
@@ -172,6 +186,7 @@ public sealed class ClientViewports(
         var sends = new List<Task>(_clients.Count);
         foreach (var (connectionId, client) in _clients)
         {
+            if (!client.Visible) continue; // it asks for the current frame when it is shown again
             var viewport = client.Viewport;
             var count = snapshot.Index.Project(viewport, ref client.Buffer);
             var cells = CellsCodec.Encode(client.Buffer.AsSpan(0, count), viewport.Width, viewport.Height, ref client.Scratch);

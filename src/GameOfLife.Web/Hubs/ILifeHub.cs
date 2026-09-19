@@ -23,6 +23,13 @@ public interface ILifeHub
     /// <summary>Returns the current frame (used to initialise the page and after reconnects).</summary>
     Task<Frame> Refresh();
 
+    /// <summary>
+    /// Tells the server whether this client can be seen. A hidden client (a background tab)
+    /// receives no frames until it is visible again; the returned frame is the current state, so
+    /// a client coming back is up to date at once.
+    /// </summary>
+    Task<Frame> SetVisibility(bool visible);
+
     /// <summary>Runs the simulation for everyone. Refused while a client is editing.</summary>
     Task Start();
 

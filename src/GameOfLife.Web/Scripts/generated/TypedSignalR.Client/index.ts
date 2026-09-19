@@ -96,6 +96,10 @@ class ILifeHub_HubProxy implements ILifeHub {
         return await this.connection.invoke("Refresh");
     }
 
+    public readonly setVisibility = async (visible: boolean): Promise<Frame> => {
+        return await this.connection.invoke("SetVisibility", visible);
+    }
+
     public readonly start = async (): Promise<void> => {
         return await this.connection.invoke("Start");
     }

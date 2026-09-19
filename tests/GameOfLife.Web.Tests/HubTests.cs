@@ -173,4 +173,44 @@ public sealed class HubTests(WebAppFixture app) : IAsyncLifetime
             await Task.Delay(50, cts.Token);
         }
     }
+
+    [Fact]
+    public async Task A_hidden_client_receives_no_frames_and_is_brought_up_to_date_when_shown()
+    {
+        var (connection, frames) = await ConnectAsync();
+        await connection.InvokeAsync(nameof(Hubs.ILifeHub.Start));
+        await NextAsync(frames, f => f.Running);
+
+        var hidden = await connection.InvokeAsync<Frame>(nameof(Hubs.ILifeHub.SetVisibility), false);
+        Assert.True(hidden.Running);
+        // Whatever was already in flight arrives; after that, silence while the world moves on.
+        await Task.Delay(200);
+        while (frames.TryRead(out _)) { }
+        var generationWhenHidden = app.Loop.Current.Generation;
+        await Task.Delay(500);
+        Assert.False(frames.TryRead(out _));
+        Assert.True(app.Loop.Current.Generation > generationWhenHidden, "the simulation should have run on");
+
+        var shown = await connection.InvokeAsync<Frame>(nameof(Hubs.ILifeHub.SetVisibility), true);
+        Assert.True(shown.Generation > generationWhenHidden);
+        var next = await NextAsync(frames);
+        Assert.True(next.Generation >= shown.Generation);
+    }
+
+    [Fact]
+    public async Task Hiding_one_client_does_not_affect_another()
+    {
+        var (hidden, hiddenFrames) = await ConnectAsync();
+        var (_, visibleFrames) = await ConnectAsync();
+        await hidden.InvokeAsync<Frame>(nameof(Hubs.ILifeHub.SetVisibility), false);
+        await Task.Delay(100);
+        while (hiddenFrames.TryRead(out _)) { }
+
+        await hidden.InvokeAsync(nameof(Hubs.ILifeHub.Start));
+
+        var frame = await NextAsync(visibleFrames, f => f.Running && f.Generation >= 3);
+        Assert.True(frame.Running);
+        Assert.False(hiddenFrames.TryRead(out _));
+        Assert.Equal(1, app.Services.GetRequiredService<ClientViewports>().VisibleCount);
+    }
 }

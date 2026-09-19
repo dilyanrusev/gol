@@ -45,7 +45,9 @@ export interface LifeHub {
 /**
  * Owns the SignalR connection for the page's lifetime. The page starts from the server's actual
  * state: after every (re)connect the current frame is pulled with Refresh rather than relying on
- * the hub's push, and an edit session lost to a reconnect is asked for again.
+ * the hub's push, and an edit session lost to a reconnect is asked for again. A hidden tab tells
+ * the server so and receives no frames until it is shown again, when the current frame arrives
+ * with the acknowledgement.
  */
 export function useLifeHub(): LifeHub {
   const [frame, setFrame] = useState<Frame | null>(null);
@@ -93,10 +95,24 @@ export function useLifeHub(): LifeHub {
       setStatus({ text, variant });
     };
 
+    // Nothing is drawn for a background tab, so nothing is sent to it. The server's answer is
+    // the current frame, which brings a tab that comes back up to date at once.
+    const tellVisibility = async () => {
+      if (disposed || connection.state !== "Connected") return;
+      try {
+        applyFrame(await hub.setVisibility(!document.hidden));
+      } catch (err) {
+        console.error("setVisibility", err);
+      }
+    };
+    const onVisibilityChange = () => { void tellVisibility(); };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
     const initialise = async () => {
       setStatus({ text: "connected", variant: "success" });
       try {
         applyFrame(await hub.refresh());
+        if (document.hidden) await tellVisibility();
       } catch (err) {
         console.error("refresh", err);
         offline("no state from server", "danger");
@@ -123,6 +139,7 @@ export function useLifeHub(): LifeHub {
 
     return () => {
       disposed = true;
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       receiver.dispose();
       hubRef.current = null;
       void connection.stop();

@@ -59,6 +59,12 @@ public sealed class LifeHub(SimulationLoop loop, ClientViewports viewports) : Hu
 
     public Task<Frame> Refresh() => Task.FromResult(CurrentFrame());
 
+    public Task<Frame> SetVisibility(bool visible)
+    {
+        viewports.SetVisible(Context.ConnectionId, visible);
+        return Task.FromResult(CurrentFrame());
+    }
+
     // --- simulation (shared by everyone) ---
 
     public Task Start() => Guarded(loop.StartAsync());

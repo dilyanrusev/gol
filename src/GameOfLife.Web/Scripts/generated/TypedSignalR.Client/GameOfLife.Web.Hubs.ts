@@ -36,6 +36,14 @@ export type ILifeHub = {
     */
     refresh(): Promise<Frame>;
     /**
+    * Tells the server whether this client can be seen. A hidden client (a background tab)
+    * receives no frames until it is visible again; the returned frame is the current state, so
+    * a client coming back is up to date at once.
+    * @param visible Transpiled from bool
+    * @returns Transpiled from System.Threading.Tasks.Task<GameOfLife.Web.Simulation.Frame>
+    */
+    setVisibility(visible: boolean): Promise<Frame>;
+    /**
     * Runs the simulation for everyone. Refused while a client is editing.
     * @returns Transpiled from System.Threading.Tasks.Task
     */

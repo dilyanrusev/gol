@@ -80,14 +80,25 @@ public sealed class WebAppFixture : WebApplicationFactory<Program>, IAsyncLifeti
     }
 
     /// <summary>
-    /// Puts the shared simulation into a known state: the blinker, generation 0, paused, nobody editing.
-    /// A previous test's editor may still be disconnecting, so its session is released here rather
-    /// than waited for.
+    /// Puts the shared simulation into a known state: the blinker, generation 0, paused, nobody editing,
+    /// and no client connected. The previous test has disposed its connections and closed its pages,
+    /// but the server notices each disconnect a moment later; a test that counts or inspects
+    /// connections must not see the previous test's. An editor among them is released rather than
+    /// waited for.
     /// </summary>
     public async Task ResetAsync()
     {
         if (Loop.Current.Edit is { } edit) await Loop.ReleaseEditAsync(edit.Owner);
         await Loop.LoadAsync(Blinker);
+
+        var viewports = Services.GetRequiredService<Simulation.ClientViewports>();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        while (viewports.Count > 0)
+        {
+            if (cts.IsCancellationRequested)
+                throw new InvalidOperationException($"{viewports.Count} connection(s) from a previous test are still registered.");
+            await Task.Delay(20);
+        }
     }
 
     /// <summary>A page in its own context, at Playwright's default 1280 x 720 unless a viewport is given.</summary>
