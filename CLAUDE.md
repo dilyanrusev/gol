@@ -12,3 +12,11 @@ I want to use the following:
   * buttons for changing the viewport (origin for the client + grid size)
   * JS (or a library) for touch gestures to move the viewport
 * Bootstrap for the UI
+
+## Prompt history
+
+`PROMPTS.md` records every prompt given to Claude Code, in order, with a short note of what it
+produced. Keep it current: whenever a turn ends, the prompts of that turn (including messages sent
+while it was running) are in the file, in the format the file already uses — a numbered heading, the
+prompt quoted verbatim, then the result. Short prompts such as "commit" are recorded too. Do not wait
+to be asked.

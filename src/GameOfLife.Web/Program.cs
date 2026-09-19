@@ -50,7 +50,8 @@ builder.Services.AddSingleton(sp =>
     return new SimulationLoop(
         (snapshot, ct) => sp.GetRequiredService<ClientViewports>().BroadcastAsync(snapshot, ct),
         options.EditTimeout,
-        options.MaxGenerationsPerSecond);
+        options.MaxGenerationsPerSecond,
+        options.MaxFramesPerSecond);
 });
 builder.Services.AddHostedService<SimulationHostedService>();
 

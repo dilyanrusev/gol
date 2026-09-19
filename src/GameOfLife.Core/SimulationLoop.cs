@@ -29,6 +29,7 @@ public sealed class SimulationLoop
     private readonly Universe _universe = new();
     private readonly Channel<Command> _commands = Channel.CreateUnbounded<Command>(new UnboundedChannelOptions { SingleReader = true });
     private readonly Func<UniverseSnapshot, CancellationToken, Task> _observer;
+    private readonly long _framePeriod; // Stopwatch ticks between frames; 0 = every generation
 
     private bool _running;
     private int _generationsPerSecond = DefaultGenerationsPerSecond;
@@ -41,30 +42,50 @@ public sealed class SimulationLoop
     private volatile UniverseSnapshot _current;
 
     /// <param name="maxGenerationsPerSecond">
-    /// The ceiling <see cref="SetSpeedAsync"/> clamps to, for hosts that must bound their CPU and
-    /// bandwidth. Itself clamped to [<see cref="MinGenerationsPerSecond"/>, <see cref="MaxGenerationsPerSecond"/>].
+    /// The ceiling <see cref="SetSpeedAsync"/> clamps to, for hosts that must bound their CPU.
+    /// Itself clamped to [<see cref="MinGenerationsPerSecond"/>, <see cref="MaxGenerationsPerSecond"/>].
+    /// </param>
+    /// <param name="maxFramesPerSecond">
+    /// How often, at most, generations are published to the observer, for hosts that must bound
+    /// their bandwidth; 0 publishes every generation. See <see cref="FrameRateLimit"/>.
     /// </param>
     public SimulationLoop(
         Func<UniverseSnapshot, CancellationToken, Task>? observer = null,
         TimeSpan? editTimeout = null,
-        int maxGenerationsPerSecond = MaxGenerationsPerSecond)
+        int maxGenerationsPerSecond = MaxGenerationsPerSecond,
+        int maxFramesPerSecond = 0)
     {
         EditTimeout = editTimeout ?? DefaultEditTimeout;
         if (EditTimeout <= TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(editTimeout), "The edit timeout must be positive.");
+        ArgumentOutOfRangeException.ThrowIfNegative(maxFramesPerSecond);
         SpeedLimit = Math.Clamp(maxGenerationsPerSecond, MinGenerationsPerSecond, MaxGenerationsPerSecond);
+        FrameRateLimit = maxFramesPerSecond;
+        _framePeriod = maxFramesPerSecond == 0 ? 0 : Stopwatch.Frequency / maxFramesPerSecond;
         _generationsPerSecond = Math.Min(DefaultGenerationsPerSecond, SpeedLimit);
         _observer = observer ?? ((_, _) => Task.CompletedTask);
         _current = BuildSnapshot();
     }
 
-    /// <summary>The latest published snapshot. Never null; starts as an empty, paused universe.</summary>
+    /// <summary>
+    /// The latest published snapshot. Never null; starts as an empty, paused universe. Under a
+    /// <see cref="FrameRateLimit"/> it can trail the engine by up to one frame period while running.
+    /// </summary>
     public UniverseSnapshot Current => _current;
 
     public TimeSpan EditTimeout { get; }
 
     /// <summary>The fastest speed this loop accepts, in generations per second.</summary>
     public int SpeedLimit { get; }
+
+    /// <summary>
+    /// The most frames per second the observer receives while the simulation runs faster than
+    /// that; 0 means one frame per generation. Generations between frames are computed but not
+    /// published, so the engine's pace and the clients' bandwidth are set independently. Commands
+    /// (start, pause, step, load, edits) always publish at once, and a paused loop never holds a
+    /// frame back, so what a client sees is always the true current state.
+    /// </summary>
+    public int FrameRateLimit { get; }
 
     public Task StartAsync() => PostAsync(() => { RequireNotEditing(); _running = true; });
 
@@ -214,15 +235,25 @@ public sealed class SimulationLoop
         var reader = _commands.Reader;
         var executed = new List<Command>();
         long nextTick = Stopwatch.GetTimestamp();
+        long nextFrame = nextTick;
+        bool framePending = false; // a generation was stepped but not yet published
 
         try
         {
             while (!cancellationToken.IsCancellationRequested)
             {
-                bool changed = false;
+                bool flush = false;   // something other than the clock changed the state: publish now
+                bool stepped = false;
 
                 if (!_running)
                 {
+                    if (framePending)
+                    {
+                        // Nothing else will publish while paused, so the held-back generation goes out first.
+                        await PublishAsync(cancellationToken).ConfigureAwait(false);
+                        framePending = false;
+                    }
+
                     if (_edit is { } edit)
                     {
                         // Wake for a command or for the session's expiry, whichever comes first.
@@ -235,6 +266,7 @@ public sealed class SimulationLoop
                         if (!await reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false)) break;
                     }
                     nextTick = Stopwatch.GetTimestamp();
+                    nextFrame = nextTick;
                 }
                 else
                 {
@@ -249,29 +281,51 @@ public sealed class SimulationLoop
                 {
                     command.Execute();
                     executed.Add(command);
-                    changed = true;
+                    flush = true;
                 }
 
                 if (_edit is { Expired: true })
                 {
                     CommitEdit();
-                    changed = true;
+                    flush = true;
                 }
 
                 if (_running && Stopwatch.GetElapsedTime(nextTick) >= TimeSpan.Zero)
                 {
                     _universe.Step();
-                    changed = true;
+                    stepped = true;
                     long period = Stopwatch.Frequency / _generationsPerSecond;
                     nextTick += period;
                     // If we fell behind (slow observer, GC pause), don't try to catch up in a burst.
                     if (Stopwatch.GetTimestamp() - nextTick > period) nextTick = Stopwatch.GetTimestamp() + period;
                 }
 
-                if (changed) _current = BuildSnapshot();
+                // A frame per generation, unless the frame rate is capped: then generations are
+                // published on the frame schedule and the ones in between are only computed.
+                bool publish = flush;
+                if (stepped)
+                {
+                    long now = Stopwatch.GetTimestamp();
+                    if (_framePeriod == 0 || now >= nextFrame)
+                    {
+                        publish = true;
+                        nextFrame += _framePeriod;
+                        if (nextFrame < now) nextFrame = now + _framePeriod; // idle for a while: no burst to catch up
+                    }
+                    else
+                    {
+                        framePending = true;
+                    }
+                }
+
+                if (publish) _current = BuildSnapshot();
                 foreach (var command in executed) command.Complete();
                 executed.Clear();
-                if (changed) await _observer(_current, cancellationToken).ConfigureAwait(false);
+                if (publish)
+                {
+                    framePending = false;
+                    await _observer(_current, cancellationToken).ConfigureAwait(false);
+                }
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -285,6 +339,12 @@ public sealed class SimulationLoop
             while (reader.TryRead(out var pending))
                 pending.Fail(stopped);
         }
+    }
+
+    private Task PublishAsync(CancellationToken cancellationToken)
+    {
+        _current = BuildSnapshot();
+        return _observer(_current, cancellationToken);
     }
 
     /// <summary>Waits until a command is available or <paramref name="timeout"/> passes; true if a command arrived.</summary>

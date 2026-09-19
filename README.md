@@ -52,8 +52,9 @@ App Service, where CPU time and outbound bandwidth are metered per day.
 | `SaveIntervalSeconds` | 60 | | How often the universe is saved while it changes; it is always saved at shutdown. The saved population reloads in place as the seed at generation 0. 0 disables the periodic save. |
 | `PauseWhenUnwatchedSeconds` | 60 | | Grace period after the last client disconnects before the simulation pauses itself, so a closed tab does not keep the server stepping for nobody while a page reload does not interrupt it. 0 never pauses. |
 | `EditTimeoutSeconds` | 300 | | Idle time after which an edit session ends on its own. |
-| `MaxGenerationsPerSecond` | 60 | 20 | Ceiling of the speed slider (1–60). |
-| `MaxViewportSize` | 500 | 200 | Largest grid a client may ask for, per side (5–500). The frame size grows with its square. |
+| `MaxGenerationsPerSecond` | 60 | 20 | Ceiling of the speed slider (1–60). The CPU knob: stepping is O(live cells) per generation. |
+| `MaxFramesPerSecond` | 0 (every generation) | 10 | Most frames per second sent to clients while the simulation runs faster; generations in between are computed but not sent. The bandwidth knob: a frame is ~2 bytes per visible cell when sparse, a W×H/8-byte bitmap when dense. Commands (start, pause, step, load, edits) are always sent at once. |
+| `MaxViewportSize` | 500 | 150 | Largest grid a client may ask for, per side (5–500). The frame size grows with its square. |
 | `MaxPopulation` | 1 048 576 | 100 000 | Most live cells an uploaded or hand-written pattern may have. Run lengths let a few bytes of RLE describe billions of cells, so the 4 MB upload limit alone bounds nothing. The seed file and the saved universe are exempt. |
 
 ## Benchmarks
@@ -89,7 +90,10 @@ budgets that fail the build when a hot path starts allocating more.
   costs O(live cells). Unchecked `ulong` arithmetic gives torus wrapping for free.
 - **Single writer.** `SimulationLoop` owns the `Universe`. Every mutation (start, pause, step,
   reset, load, speed, edit) is a command posted to a channel and applied between generations. After each
-  change it publishes an immutable `UniverseSnapshot`. The hosted service restores the saved
+  change it publishes an immutable `UniverseSnapshot`. Under `MaxFramesPerSecond` the snapshot
+  is built and published on the frame schedule while running (commands still publish at once, and
+  a paused loop never holds a generation back), so the engine's pace and the clients' bandwidth are
+  two independent settings. The hosted service restores the saved
   universe or the seed file at start, saves the latest snapshot at the configured interval and at
   shutdown (`UniverseStore`: written beside the file and swapped in, so a crash cannot leave a
   truncated one), and `ClientViewports` pauses the loop once nobody has been connected for the

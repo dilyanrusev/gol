@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Threading.Channels;
 using GameOfLife.Core;
 using GameOfLife.Core.Rle;
@@ -148,5 +149,94 @@ public class SimulationLoopTests : IAsyncLifetime
     {
         Assert.Equal(SimulationLoop.MaxGenerationsPerSecond, new SimulationLoop(maxGenerationsPerSecond: 1000).SpeedLimit);
         Assert.Equal(SimulationLoop.MinGenerationsPerSecond, new SimulationLoop(maxGenerationsPerSecond: 0).SpeedLimit);
+    }
+
+    /// <summary>A loop of its own with a frame cap, run for one test.</summary>
+    private static async Task WithFrameLimitAsync(int maxFramesPerSecond, Func<SimulationLoop, ChannelReader<UniverseSnapshot>, Task> test)
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var published = Channel.CreateUnbounded<UniverseSnapshot>();
+        var loop = new SimulationLoop((s, ct) => published.Writer.WriteAsync(s, ct).AsTask(), maxFramesPerSecond: maxFramesPerSecond);
+        var run = loop.RunAsync(cts.Token);
+        try
+        {
+            await test(loop, published.Reader);
+        }
+        finally
+        {
+            cts.Cancel();
+            await run;
+        }
+    }
+
+    [Fact]
+    public Task A_frame_limit_publishes_fewer_frames_than_generations() => WithFrameLimitAsync(10, async (loop, frames) =>
+    {
+        await loop.LoadAsync(RleParser.Parse(KnownPatterns.Glider));
+        await loop.SetSpeedAsync(SimulationLoop.MaxGenerationsPerSecond);
+        while (frames.TryRead(out _)) { }
+        await loop.StartAsync();
+        var started = Stopwatch.GetTimestamp();
+
+        var running = new List<UniverseSnapshot>();
+        UniverseSnapshot s;
+        do
+        {
+            s = await frames.ReadAsync();
+            if (s.Running && s.Generation > 0) running.Add(s);
+        } while (s.Generation < 30);
+        var elapsed = Stopwatch.GetElapsedTime(started);
+
+        // At most ten a second (plus the frame that starts the schedule), while the engine ran on
+        // at sixty: generations that were never published are the whole point.
+        Assert.InRange(running.Count, 1, 10 * elapsed.TotalSeconds + 2);
+        Assert.Contains(running.Zip(running.Skip(1)), pair => pair.Second.Generation - pair.First.Generation > 1);
+        Assert.True(s.Generation >= 30);
+    });
+
+    [Fact]
+    public Task Commands_publish_at_once_under_a_frame_limit() => WithFrameLimitAsync(1, async (loop, frames) =>
+    {
+        await loop.LoadAsync(RleParser.Parse(KnownPatterns.Blinker));
+        Assert.Equal(0UL, (await frames.ReadAsync()).Generation);
+
+        // One frame a second would allow only one of these in the next second; each still arrives immediately.
+        var started = Stopwatch.GetTimestamp();
+        for (var expected = 1UL; expected <= 3; expected++)
+        {
+            await loop.StepAsync();
+            Assert.Equal(expected, loop.Current.Generation);
+            Assert.Equal(expected, (await frames.ReadAsync()).Generation);
+        }
+        Assert.True(Stopwatch.GetElapsedTime(started) < TimeSpan.FromMilliseconds(900));
+    });
+
+    [Fact]
+    public Task Pausing_publishes_the_generations_held_back_by_the_frame_limit() => WithFrameLimitAsync(1, async (loop, frames) =>
+    {
+        await loop.LoadAsync(RleParser.Parse(KnownPatterns.Glider));
+        await loop.SetSpeedAsync(SimulationLoop.MaxGenerationsPerSecond);
+        await loop.StartAsync();
+        await Task.Delay(300); // several generations, at most one of them published
+        await loop.PauseAsync();
+
+        var paused = loop.Current;
+        Assert.False(paused.Running);
+        Assert.True(paused.Generation >= 5, $"only {paused.Generation} generations in 300 ms");
+
+        // The last frame the observer got is the paused one, and nothing follows it.
+        UniverseSnapshot last = null!;
+        while (frames.TryRead(out var f)) last = f;
+        Assert.Same(paused, last);
+        await Task.Delay(100);
+        Assert.False(frames.TryRead(out _));
+    });
+
+    [Fact]
+    public void The_frame_limit_must_not_be_negative()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new SimulationLoop(maxFramesPerSecond: -1));
+        Assert.Equal(0, new SimulationLoop().FrameRateLimit);
+        Assert.Equal(10, new SimulationLoop(maxFramesPerSecond: 10).FrameRateLimit);
     }
 }

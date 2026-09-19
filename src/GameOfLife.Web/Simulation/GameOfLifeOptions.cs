@@ -21,6 +21,13 @@ public sealed class GameOfLifeOptions
     /// <summary>The fastest speed a client may ask for; at most <see cref="SimulationLoop.MaxGenerationsPerSecond"/>.</summary>
     public int MaxGenerationsPerSecond { get; set; } = SimulationLoop.MaxGenerationsPerSecond;
 
+    /// <summary>
+    /// The most frames per second clients receive while the simulation runs faster than that;
+    /// the generations in between are computed but not sent. 0 sends every generation. This is
+    /// the bandwidth knob; <see cref="MaxGenerationsPerSecond"/> is the CPU one.
+    /// </summary>
+    public int MaxFramesPerSecond { get; set; }
+
     /// <summary>The largest grid a client may ask for, in cells per side; at most <see cref="Viewport.MaxSize"/>.</summary>
     public int MaxViewportSize { get; set; } = Viewport.MaxSize;
 
@@ -70,6 +77,7 @@ public sealed class GameOfLifeOptions
             error = $"MaxGenerationsPerSecond must be between {SimulationLoop.MinGenerationsPerSecond} and {SimulationLoop.MaxGenerationsPerSecond}.";
         else if (MaxViewportSize < Viewport.MinSize || MaxViewportSize > Viewport.MaxSize)
             error = $"MaxViewportSize must be between {Viewport.MinSize} and {Viewport.MaxSize}.";
+        else if (MaxFramesPerSecond < 0) error = "MaxFramesPerSecond must be 0 (every generation) or positive.";
         else if (MaxPopulation <= 0) error = "MaxPopulation must be positive.";
         return error is null;
     }

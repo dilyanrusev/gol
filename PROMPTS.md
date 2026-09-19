@@ -705,3 +705,86 @@ Result:
 > can you write this sessions' prompts in @PROMPTS.md
 
 Result: this section.
+
+### 42. Commit
+
+> commit
+
+Result: `3a5b88b` — persist the universe, pause when unwatched, cap speed, view and population.
+
+### 43. What is left before the container
+
+> Is there anything remaining to fix before building a container for the free Azure tier?
+
+Measured first: a cold page load was ~430 KB of uncompressed bundles (`viewer.js` 177 KB, Bootstrap
+CSS 234 KB) with no response compression, about 380 first visits per day on the 165 MB quota; source
+maps were published too. Answer, by category: fix in the app (compression; the dense-view frame
+bandwidth — a 200 × 200 bitmap at 20 gen/s spends the quota in ~20 minutes, so either lower the caps
+or cap the frame rate independently of the generation rate; the maps), belongs in the Dockerfile
+(`ASPNETCORE_FORWARDEDHEADERS_ENABLED`, `WEBSITES_PORT=8080`, root vs. `app` user, Debian vs.
+Alpine ICU, Playwright in the test stage), verify once deployed (state directory writable,
+WebSockets, idle unload), not needed (health endpoint, auth).
+
+### 44. Response compression
+
+> do 1
+
+Result: Brotli + Gzip response compression middleware, measured at 122 KB per cold load. Superseded
+by the next entry and never committed.
+
+### 45. Static web assets instead
+
+> I think that .net 10 supports pre-compilation on publish with an asset map. Is it necessary to
+> change Program.cs to support it? Can you make it work?
+
+Yes to both. `MapStaticAssets` + `MapRazorPages().WithStaticAssets()` replace `UseStaticFiles`
+(kept in Development for `npm run watch`); `asp-append-version` renders the fingerprinted URLs.
+Getting the bundles into the manifest meant running the client build before the SDK collects assets,
+which exposed three build bugs, all fixed in the csproj: the evaluation-time `wwwroot/**` glob listed
+chunk files esbuild was about to delete (a wildcard `Remove` in a target expands against the file
+system, so it could not help) — `wwwroot/dist` is now excluded from the glob and declared by an
+always-running `DeclareClientAssets` target; the up-to-date stamp lived in `obj/<Configuration>`
+while `dist` is shared, so a Release publish after a Debug build shipped unminified bundles — the
+stamp now lives in `dist`, which esbuild empties; and the TypeScript generator's MSBuildWorkspace
+load is a full nested build that ran the client targets and rewrote the Debug manifests mid-publish —
+it now gets `SkipClientBuild=true`. Verified: clean build, Release publish (Brotli 44 KB for
+`viewer.js`, `immutable` caching, no maps), configuration switch, incremental, `SkipClientBuild`
+with a prebuilt `dist`. Response compression removed again. README build notes updated.
+
+### 46. Commit
+
+> commit
+
+Result: `9b6919c` — serve the bundles through the static web assets pipeline.
+
+### 47. The bandwidth decision
+
+> Can you elaborate on the badwidth decision? These constants can be set in Azure's UI. What do you
+> propose for the loop?
+
+Explained that the two quotas have different drivers — CPU goes to stepping, bytes go to frames — and
+that one frame per generation ties them together, so lowering `MaxGenerationsPerSecond` saves bytes
+only by slowing the simulation. Table of bytes per frame and hours per 165 MB for sparse and dense
+views at 20/10/5 fps. Proposal: `MaxFramesPerSecond` in the loop — generations coalesced onto a frame
+schedule, commands publish at once, a paused loop flushes the held-back generation, snapshots built
+only when publishing, 0 = every generation; production 20 gen/s, 10 fps, 150 cells across. Per-client
+rate for hidden tabs offered as a second step.
+
+### 48. Frame-rate limit
+
+> yes
+
+Result: `SimulationLoop(maxFramesPerSecond)` / `FrameRateLimit`; `RunAsync` separates *flush*
+(commands, edit expiry) from *stepped* (clock), publishes steps on an aligned frame schedule with a
+no-burst guard, flushes a pending frame before pausing, and builds the snapshot only when it
+publishes. `GameOfLife:MaxFramesPerSecond` option; production settings 20 / 10 / 150 / 100 000.
+Four loop tests (rate bounded by wall-clock with generations skipped; three steps under a 1 fps cap
+arrive at once; pause publishes the held-back generation and nothing after; validation), the README
+row and design bullet. 132 Core and 67 Web tests green.
+
+### 49. This rule
+
+> Can you add to CLAUDE.md a rule that all PROMPTS.md should be always updated, and update it
+
+Result: a "Prompt history" section in `CLAUDE.md` requiring this file to be brought up to date at
+the end of every turn without being asked, and entries 42–49 above.
