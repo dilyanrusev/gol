@@ -62,7 +62,7 @@ state directory" at start; set `GameOfLife__StateDirectory` or run the image as 
 `workflow_dispatch`): it builds the `test-deps` stage and runs the whole test suite in a container
 from it — as a container rather than a build step, so a re-run of an already-built commit still
 executes the tests. On `main` it then pushes the `runtime` stage to GitHub Container Registry
-(`ghcr.io/<owner>/game-of-life`, tagged `sha-<commit>` and `latest`) and, once the repository has
+(`ghcr.io/<owner>/<repository>`, tagged `sha-<commit>` and `latest`) and, once the repository has
 the *repository* variable `AZURE_WEBAPP_NAME`, deploys that image to the web app by digest and
 waits for the site to answer. The deploy logs in with OIDC and needs the `AZURE_CLIENT_ID` /
 `AZURE_TENANT_ID` / `AZURE_SUBSCRIPTION_ID` secrets of an Entra app registration with a federated

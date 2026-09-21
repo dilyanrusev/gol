@@ -956,3 +956,23 @@ locally: the CI path (`test-deps` + `docker run … dotnet test`) passes 132 + 7
 > commit
 
 Result: the commit "add the Dockerfile and the GitHub Actions pipeline" (this entry is amended into it).
+
+### 61. First run of the pipeline
+
+> I think I configured both Azure and Github, let's test by pushing
+
+Sent after the failure, the failing step's log:
+
+> ```Test run for /src/tests/GameOfLife.Web.Tests/bin/Release/net10.0/GameOfLife.Web.Tests.dll …
+> GameOfLife.Web.Tests.VisibilityBrowserTests.A_tab_opened_in_the_background_receives_nothing_until_shown [FAIL]
+> … Locator expected to have text '0' But was: '3' …```
+
+Result: pushed `main` (seven commits) to `dilyanrusev/gol`; the run built the test stage from a cold
+cache in about seven minutes and one browser test failed on the runner while passing locally, even
+at two CPUs. The log showed the hidden tab's counter at 3 and frozen there — one frame, not a
+stream: on the slow runner the page's height re-request fires again after the loop has started,
+and a hub call's answer carries the current frame whatever the visibility. Reproduced
+deterministically by running the container at one CPU. Fix in the tests, not the app: the two
+hidden-tab tests now assert that the counter stands still while the world (or the visible tab)
+moves on, instead of that it reads 0. Verified at one CPU. README: the image is
+`ghcr.io/<owner>/<repository>` (the repository is `gol`, not `game-of-life`).

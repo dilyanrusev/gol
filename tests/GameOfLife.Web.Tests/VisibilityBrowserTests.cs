@@ -105,9 +105,12 @@ public sealed class VisibilityBrowserTests(WebAppFixture app) : IAsyncLifetime
         var before = await GenerationAsync(visible);
         await Expect(visible.Locator("#status-generation")).Not.ToHaveTextAsync(before.ToString());
 
-        // The hidden tab never learned that the simulation started.
-        await Expect(hidden.Locator("#status-running")).ToHaveTextAsync("paused");
-        await Expect(hidden.Locator("#status-generation")).ToHaveTextAsync("0");
+        // The hidden tab's counter stands still while the visible one's climbs. (It need not read 0:
+        // the page's own hub calls, such as a late height re-request, answer with the current frame.)
+        var frozen = await FrozenGenerationAsync(hidden);
+        await Task.Delay(700);
+        Assert.Equal(frozen, await GenerationAsync(hidden));
+        Assert.True(await GenerationAsync(visible) > frozen);
     }
 
     [Fact]
@@ -132,12 +135,15 @@ public sealed class VisibilityBrowserTests(WebAppFixture app) : IAsyncLifetime
             while (viewports.Count != 1 || viewports.VisibleCount != 0) await Task.Delay(50, cts.Token);
 
         await app.Loop.StartAsync();
+        // Not "still 0": a hub call the page makes on its own (a late height re-request on a slow
+        // machine) answers with the current frame. What a hidden tab must not get is the stream.
+        var frozen = await FrozenGenerationAsync(page);
         await Task.Delay(700);
-        await Expect(page.Locator("#status-generation")).ToHaveTextAsync("0");
-        Assert.True(app.Loop.Current.Generation > 5);
+        Assert.Equal(frozen, await GenerationAsync(page));
+        Assert.True(app.Loop.Current.Generation > frozen + 3, $"the simulation should have run on past {frozen}");
 
         await SetHiddenAsync(page, false);
-        await Expect(page.Locator("#status-generation")).Not.ToHaveTextAsync("0");
+        await Expect(page.Locator("#status-generation")).Not.ToHaveTextAsync(frozen.ToString());
         await Expect(page.Locator("#status-running")).ToHaveTextAsync("running");
     }
 }
