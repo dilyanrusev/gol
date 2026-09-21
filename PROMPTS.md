@@ -976,3 +976,6 @@ deterministically by running the container at one CPU. Fix in the tests, not the
 hidden-tab tests now assert that the counter stands still while the world (or the visible tab)
 moves on, instead of that it reads 0. Verified at one CPU. README: the image is
 `ghcr.io/<owner>/<repository>` (the repository is `gol`, not `game-of-life`).
+Second run, after the fix: build green in four minutes with the warm cache, the image pushed to
+GHCR — and the deploy job skipped, which means `vars.AZURE_WEBAPP_NAME` was empty at the job-level
+`if`: the variable is either environment-scoped or missing (see #59 and the workflow header).
