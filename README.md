@@ -38,6 +38,40 @@ Tests: `dotnet test`. The Web tests start the real server on Kestrel at a random
 with the .NET SignalR client and with Playwright. They use the Chromium build bundled with the
 Playwright package, which the test fixture downloads on first run (about 150 MB, cached per user).
 
+## Container
+
+```
+docker build -t game-of-life .        # the app: ASP.NET runtime + the published site, about 230 MB
+docker build --target test .          # builds and runs every test inside the image (Chromium included); fails if they do
+docker run -p 8080:8080 -v game-of-life:/home/app/.local/share/dilyanrusev/game-of-life game-of-life
+```
+
+One `Dockerfile`, four stages: `base` (SDK + Node 22), `restore` (NuGet, the TypeScript generator
+tool and npm packages, from the project files alone, so source changes do not redo them), `build`
+(`dotnet publish`, with the client built the same way as on a developer machine and the bundles
+fingerprinted and pre-compressed) and `test` (Playwright's Chromium installed before the sources
+are copied, then `dotnet test` of the whole solution). The deployed `runtime` stage holds only the
+runtime and the published site, runs as the non-root `app` user, listens on 8080 and trusts the
+forwarded headers of a TLS-terminating proxy. The saved universe and the data-protection key ring
+live under `/home/app/...` (see [Configuration](#configuration)): mount a volume there locally; on
+Azure App Service `/home` is persisted by the platform. App Service also needs `WEBSITES_PORT=8080`.
+If the platform's `/home` is not writable for the `app` user, the log says "Could not create the
+state directory" at start; set `GameOfLife__StateDirectory` or run the image as root.
+
+`.github/workflows/ci.yml` runs on every pull request and on pushes to `main` (and by hand with
+`workflow_dispatch`): it builds the `test-deps` stage and runs the whole test suite in a container
+from it — as a container rather than a build step, so a re-run of an already-built commit still
+executes the tests. On `main` it then pushes the `runtime` stage to GitHub Container Registry
+(`ghcr.io/<owner>/game-of-life`, tagged `sha-<commit>` and `latest`) and, once the repository has
+the *repository* variable `AZURE_WEBAPP_NAME`, deploys that image to the web app by digest and
+waits for the site to answer. The deploy logs in with OIDC and needs the `AZURE_CLIENT_ID` /
+`AZURE_TENANT_ID` / `AZURE_SUBSCRIPTION_ID` secrets of an Entra app registration with a federated
+credential for the `production` environment and Website Contributor on the web app; without the
+variable the job is skipped, without the secrets it fails. The web app must be able to pull the
+image: make the package public, or give it `DOCKER_REGISTRY_SERVER_*` settings. Docker's layer
+cache lives in the Actions cache, so a run redoes only the source layers and the tests; runs on
+`main` queue so commits deploy in order, runs on a feature branch supersede each other.
+
 ## Configuration
 
 Everything lives in the `GameOfLife` section (`appsettings*.json`, or environment variables such

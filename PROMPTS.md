@@ -879,3 +879,80 @@ tick benchmark serialises with it. Cost on the cold load: `viewer.js` 51 → 59 
 > commit
 
 Result: the commit "frames travel as MessagePack, cells as bytes" (this entry is amended into it).
+
+### 56. Dockerfile
+
+> create a docker file
+
+Result: `Dockerfile` with four stages — `base` (SDK 10 + Node 22 from NodeSource), `restore`
+(project files only: `dotnet restore` of the solution, `dotnet tool restore`, `npm ci`), `build`
+(`dotnet publish -c Release` of the Web project with the csproj-driven client build, so the image
+is built the way a developer builds) and `test` (Playwright's Chromium and system libraries via
+`npx playwright@1.52.0 install --with-deps` before the sources are copied, then `dotnet test` of the
+solution in Release) — and the deployed `runtime` stage on `aspnet:10.0`: published site only,
+`ASPNETCORE_FORWARDEDHEADERS_ENABLED` baked in, the state directory pre-created and owned by the
+non-root `app` user so a mounted volume inherits it, port 8080. `.dockerignore` keeps build outputs,
+`node_modules`, `wwwroot/dist` and `.git` out of the context. Verified locally: the runtime image is
+232 MB, starts as `app`, seeds the gun, creates the state directory, serves the fingerprinted
+bundles as Brotli with immutable caching and does not redirect when `X-Forwarded-Proto: https`
+arrives; the `test` stage passes 132 Core and 77 Web tests inside the container. README gains a
+Container section with the App Service notes (`WEBSITES_PORT`, `/home` persistence, root fallback).
+
+### 57. GitHub Actions
+
+> create the github actions workflow
+
+Result: `.github/workflows/ci.yml` with three jobs. `test` (every pull request and push) builds the
+Dockerfile's `test` stage with buildx and the Actions layer cache, so the restored packages and
+Chromium persist between runs and a failing test fails the job. `image` (pushes to `main`) builds
+the `runtime` stage and pushes it to GHCR as `sha-<commit>` and `latest`, lower-casing the
+repository name for the image. `deploy` (`main`, and only once the `AZURE_WEBAPP_NAME` variable
+exists) logs in to Azure with OIDC (`AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_SUBSCRIPTION_ID`
+secrets, `production` environment), sets `WEBSITES_PORT=8080` without touching other settings, and
+points the web app at the image by digest, so what ran the tests is what runs. Deploys queue rather
+than overlap; a newer push cancels a running test of the same branch. Checked with actionlint.
+README's Container section describes the pipeline and what to configure.
+
+### 58. Independent review of the workflow
+
+> can you start an angent with a clean context to review @.github/workflows/ci.yml ?
+
+Result: a subagent with no conversation context reviewed `ci.yml` against the Dockerfile,
+`.dockerignore` and the README's Container section. Its ranked findings, relayed with an
+assessment: the pushed artifact is an OCI index with a provenance attestation that Azure has
+been known to refuse (`provenance: false`); `main` runs can interleave because only `test` and
+`deploy` have concurrency groups, so an older commit can end up live (one workflow-level group,
+cancel only off `main`); `vars.AZURE_WEBAPP_NAME` in a job-level `if` must be a *repository*
+variable, an environment-scoped one reads as empty and the deploy is skipped silently; a re-run of
+a green commit hits the cached `RUN dotnet test` layer and passes without running anything; the
+Chromium layer sits after `restore`, so any csproj or lockfile change re-downloads it, and every run
+exports the test and publish layers to a 10 GB cache they can never hit; no `timeout-minutes`; the
+deploy never checks the site came up; several documentation mismatches (push is `main`-only, tags
+are `sha-<40 hex>`, missing secrets fail rather than skip, `workflow_dispatch` undocumented);
+`.github/`, `Dockerfile` and `.dockerignore` not in `.dockerignore`. Confirmed fine: per-job
+permissions, `GITHUB_TOKEN` for GHCR, fork PR isolation, output wiring, Chromium under BuildKit.
+
+### 59. The review's fixes
+
+> apply the proposed fixes
+
+Result: Dockerfile — a `tooling` stage (Playwright's Chromium and its libraries) now sits between
+`base` and `restore`, so neither a source nor a package change downloads the browser again; the
+tests split into `test-deps` (everything built, sources copied) and `test` (`RUN dotnet test`, still
+`docker build --target test` locally). `.dockerignore` also excludes `.github`, `Dockerfile` and
+`.dockerignore`. Workflow — one job builds `test-deps` with the Actions layer cache, loads it and
+runs `dotnet test` in a container (a cached build step would not run on a re-run), then on `main`
+pushes the `runtime` stage without provenance/SBOM attestations (an OCI index App Service has been
+known to refuse) reusing the builder's layers; a workflow-level concurrency group queues `main` runs
+and cancels superseded feature-branch runs; `timeout-minutes` 30 and 10; the deploy job is gated on
+the *repository* variable, sets `WEBSITES_PORT`, deploys by digest and polls the action's
+`webapp-url` for up to five minutes. README and the headers now say push is `main`-only, tags are
+`sha-<commit>`, missing secrets fail rather than skip, and what `workflow_dispatch` does. Verified
+locally: the CI path (`test-deps` + `docker run … dotnet test`) passes 132 + 77 tests, so does
+`--target test`, the runtime image is unchanged at 232 MB without the browser; actionlint clean.
+
+### 60. Commit
+
+> commit
+
+Result: the commit "add the Dockerfile and the GitHub Actions pipeline" (this entry is amended into it).

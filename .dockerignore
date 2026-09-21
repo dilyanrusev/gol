@@ -1,0 +1,17 @@
+# Build outputs and dependencies are produced inside the image; the rest is not needed to build it.
+# The build's own files stay out too, so editing them does not invalidate the source layers.
+.git
+.github
+Dockerfile
+.dockerignore
+**/bin
+**/obj
+**/node_modules
+**/wwwroot/dist
+**/TestResults
+**/BenchmarkDotNet.Artifacts
+benchmarks/results
+.vs
+.idea
+*.md
+!README.md

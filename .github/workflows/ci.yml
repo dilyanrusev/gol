@@ -1,0 +1,138 @@
+# Build, test, publish the image, deploy.
+#
+#   pull request         -> build: the Dockerfile's `test-deps` stage, then every test in a container from it
+#   push to main         -> build, then the `runtime` stage pushed to GHCR as sha-<commit> and latest,
+#                           then deploy: Azure App Service told to run that exact digest
+#   workflow_dispatch    -> the same as a push of the chosen branch (from main: rebuild, push and deploy again)
+#
+# The deploy job is skipped until the *repository* variable AZURE_WEBAPP_NAME exists (a variable
+# scoped to the environment is not visible to a job-level `if`). It then needs the secrets
+# AZURE_CLIENT_ID, AZURE_TENANT_ID and AZURE_SUBSCRIPTION_ID — a Microsoft Entra app registration
+# with a federated credential for this repository's `production` environment and the Website
+# Contributor role on the web app (OIDC: no password is stored anywhere); those may live on the
+# environment, and if they are missing the job fails rather than skips.
+# The web app must be able to pull the image: either make the GHCR package public (repository ->
+# Packages -> package settings) or give the app DOCKER_REGISTRY_SERVER_URL / _USERNAME / _PASSWORD
+# settings with a token that can read packages.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# One run at a time per branch. A newer push to a feature branch supersedes a running check; runs
+# on main queue instead, so commits are built, pushed and deployed in order.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write # used only by the push steps, which run on main
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+      name: ${{ steps.name.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      # The layer cache lives in the Actions cache: the SDK image with Node and Chromium, the
+      # restored NuGet and npm packages, so a run redoes only the source layers.
+      - name: Build everything the tests need
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: test-deps
+          load: true
+          tags: game-of-life-test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      # In a container rather than as a build step: a build step that is a cache hit does not run,
+      # and a re-run of a green commit would pass without testing anything.
+      - name: Run the tests
+        run: docker run --rm game-of-life-test dotnet test GameOfLife.slnx -c Release --no-restore
+
+      # Image names must be lower-case; the repository name need not be.
+      - if: github.ref == 'refs/heads/main'
+        id: name
+        run: echo "value=${IMAGE,,}" >> "$GITHUB_OUTPUT"
+      - if: github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - if: github.ref == 'refs/heads/main'
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.name.outputs.value }}
+          tags: |
+            type=sha,format=long
+            type=raw,value=latest
+      # The base and restore layers are already in this builder from the test build. No provenance
+      # attestation: it would make the pushed artifact an OCI index that App Service has been known
+      # to refuse, and nothing here consumes it.
+      - if: github.ref == 'refs/heads/main'
+        id: push
+        name: Build the runtime stage and push it
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: runtime
+          push: true
+          provenance: false
+          sbom: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+
+  deploy:
+    if: github.ref == 'refs/heads/main' && vars.AZURE_WEBAPP_NAME != ''
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      # The image listens on 8080 (the non-root aspnet image default). The action merges into the
+      # existing settings and writes nothing when the value is unchanged, so GameOfLife__* overrides
+      # set in the portal survive a deploy and the app is not restarted twice.
+      - uses: azure/appservice-settings@v1
+        with:
+          app-name: ${{ vars.AZURE_WEBAPP_NAME }}
+          app-settings-json: '[{ "name": "WEBSITES_PORT", "value": "8080", "slotSetting": false }]'
+      # By digest, not by tag: what was tested is what runs, and a later :latest cannot drift in.
+      - id: deploy
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.AZURE_WEBAPP_NAME }}
+          images: ${{ needs.build.outputs.name }}@${{ needs.build.outputs.digest }}
+      # The action returns when the platform has accepted the change; the pull and start come after,
+      # and the free tier has no health check. A basic signal: the site answers within five minutes.
+      # (A 200 may still come from the previous container while the new one is pulled.)
+      - name: Wait for the site to answer
+        run: |
+          for _ in $(seq 1 30); do
+            curl -fsS --max-time 15 -o /dev/null "${{ steps.deploy.outputs.webapp-url }}/" && exit 0
+            sleep 10
+          done
+          echo "the site did not answer within five minutes of the deploy" >&2
+          exit 1
